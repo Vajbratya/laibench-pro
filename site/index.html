@@ -1276,7 +1276,8 @@
       }
     }
 
-    note.innerHTML = (board.note||'') + (DATA.generatedAt ? ' Generated '+esc(DATA.generatedAt)+'.' : '');
+    var disclosureText = board.disclosure ? '<br><br><b>'+esc(board.disclosure)+'</b>' : '';
+    note.innerHTML = (board.note||'') + disclosureText + (DATA.generatedAt ? ' Generated '+esc(DATA.generatedAt)+'.' : '');
   }
 
   function renderHome(){

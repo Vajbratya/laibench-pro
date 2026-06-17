@@ -31,6 +31,7 @@ window.LAIBENCH_DATA = {
    ],
    "reliability": null,
    "reliabilityRuns": 0,
+   "disclosure": "Disclosure: the ranked production agent (Laudos.AI) is a first-party system built by the same team that maintains LAIBench Pro. Free and open model rows are diagnostic comparisons only and are never ranked against the first-party production agent. Calibration fixtures are harness sanity checks, not product claims. Public demonstration cases are synthetic and were authored and clinically reviewed by senior radiologists in Sao Paulo, SP, Brazil; the controlled pt-BR suite is aggregate-only and is not an open-download benchmark. Independent third-party adjudication (vendor-versus-external inter-rater kappa) is tracked as future work and is not claimed here.",
    "note": "Controlled benchmark preview. Production agents are ranked separately from free/open model comparisons and calibration fixtures. The public board excludes case JSON, answer keys, frozen predictions and corpus provenance. The pt-BR controlled suite is gated and must not be treated as an open-download benchmark. Score is weighted clinical fidelity score. Strict all-pass means zero-failure cases: every criterion in a case passes simultaneously, and any critical failure forces FAIL instead of being averaged into PASS. Runs are reproducible only inside the controlled adjudication environment. <a href=\"#methods\">Methods</a>."
   }
  }
