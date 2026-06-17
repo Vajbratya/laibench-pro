@@ -390,6 +390,59 @@ describe("judge score scale (anti-inflation boundary)", () => {
   });
 });
 
+// ---- Anti-HealthBench invariants ----
+// These lock the properties that separate a gate-based safety benchmark from a
+// weighted-mean rubric benchmark (HealthBench style): there is no prose or
+// "communication quality" axis, substance failures are not compensable by form,
+// and a single critical failure gates the case rather than being averaged away.
+
+describe("anti-HealthBench invariants (no aesthetic score)", () => {
+  it("exposes no communication/readability/prose scoring dimension", () => {
+    assert.deepEqual(DIMS, ["CRIT", "QUAL", "TERM", "GUIDE", "RAG"]);
+    const aesthetic = (DIMS as string[]).filter((dim) => /comm|read|style|prose|tone|fluen|format/i.test(dim));
+    assert.equal(aesthetic.length, 0, "no prose/communication-quality axis may exist");
+  });
+
+  it("a single critical failure gates below PASS even with every dimension at 100 (gate, not weighted mean)", () => {
+    const dims = {} as Record<Dim, DimSummary>;
+    for (const dim of DIMS) dims[dim] = { score: 100, pass: 10, total: 10, critFails: 0, verdict: "PASS", appliedWeight: WEIGHTS[dim] };
+    const result = combineScores(dims, null, [makeCheck("CRIT", "C01", false, "critical")]);
+    // A HealthBench-style weighted mean would have returned ~100 here.
+    assert.ok(result.overall <= 59.9, `expected gate, got ${result.overall}`);
+    assert.equal(result.verdict, "FAIL");
+  });
+
+  it("a fluent, well-formatted report that OMITS a critical finding still FAILS (form never rescues substance)", async () => {
+    const benchCase = makeCase({
+      id: "anti-hb-omits-critical",
+      exam: "ct head non-contrast",
+      findings: "acute subdural hematoma. midline shift.",
+      criticalFindings: ["subdural hematoma", "midline shift"],
+    });
+    // Long, fluent, perfectly structured prose that never states the critical findings.
+    const html = "<center><b>CT OF THE HEAD WITHOUT CONTRAST</b></center><br><br><b>Technique</b><br>Helical non-contrast acquisition through the brain with high quality multiplanar reconstructions.<br><br><b>Findings</b><br>The ventricles and basal cisterns are normal in size and configuration. Gray-white matter differentiation is well preserved throughout both cerebral hemispheres. The visualized paranasal sinuses and mastoid air cells are clear and well aerated.<br><br><b>Impression</b><br>Unremarkable study of the brain with no acute intracranial abnormality.";
+    const result = await benchmarkCase({ case: benchCase, locale: "en-US", providedHtml: html, providerLabel: "fixture", modelLabel: "fixture" });
+    assert.equal(result.verdict, "FAIL", result.gateReasons.join("; "));
+    assert.ok(result.gateReasons.some((reason) => /critical/i.test(reason)), result.gateReasons.join("; "));
+  });
+
+  it("a terse, ugly, telegraphic report that is clinically complete is NOT failed for its form (ugliness never punishes)", async () => {
+    const benchCase = makeCase({
+      id: "anti-hb-ugly-but-complete",
+      exam: "ct head non-contrast",
+      findings: "acute subdural hematoma. midline shift.",
+      criticalFindings: ["subdural hematoma", "midline shift"],
+    });
+    // Ugly: no centering, no technique section, no fluent prose. Just the
+    // required title, the findings, and the impression. Form is bare; substance
+    // is complete.
+    const html = "<b>CT HEAD NON-CONTRAST</b><br><b>Findings</b><br>acute subdural hematoma. midline shift 8mm.<br><b>Impression</b><br>acute subdural hematoma with midline shift.";
+    const result = await benchmarkCase({ case: benchCase, locale: "en-US", providedHtml: html, providerLabel: "fixture", modelLabel: "fixture" });
+    assert.notEqual(result.verdict, "FAIL", result.gateReasons.join("; "));
+    assert.equal(result.gateReasons.some((reason) => /critical/i.test(reason)), false, result.gateReasons.join("; "));
+  });
+});
+
 describe("parseJudgeResponse", () => {
   it("accepts fine-grained 0-100 judge scores", () => {
     const result = parseJudgeResponse(JSON.stringify({
