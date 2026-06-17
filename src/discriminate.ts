@@ -35,9 +35,15 @@ export type DiscriminationReport = {
   perDim: Record<Dim, { aMean: number; bMean: number; meanDiff: number; ci: [number, number]; pValue: number }>;
   perModality: Array<{ modality: string; n: number; meanDiff: number; ci: [number, number] }>;
   perDifficulty: Array<{ difficulty: string; n: number; meanDiff: number; ci: [number, number] }>;
+  // Strata too thin (n < 5) to rank, surfaced anyway with their n and bootstrap
+  // CI so a small per-cell sample reads as uncertain instead of being silently
+  // dropped. The CI widens as n shrinks.
+  thinStrata: Array<{ dimension: "modality" | "difficulty"; key: string; n: number; meanDiff: number; ci: [number, number] }>;
   verdict: "discriminates" | "weak" | "fails";
   notes: string[];
 };
+
+const MIN_STRATUM_N = 5; // below this a stratum is reported as thin, not ranked
 
 const DIMS: Dim[] = ["CRIT", "QUAL", "TERM", "GUIDE", "RAG"];
 const REFERENCE_PROBE_PASS_THRESHOLD = 84;
@@ -94,10 +100,14 @@ export function discriminate(
     byModality.get(m)!.push({ aScore: a.combinedOverall, bScore: b.combinedOverall });
   }
   const perModality: DiscriminationReport["perModality"] = [];
+  const thinStrata: DiscriminationReport["thinStrata"] = [];
   for (const [m, rows] of byModality.entries()) {
-    if (rows.length < 5) continue; // need n>=5 for a meaningful stratum
     const r = pairedBootstrap(rows.map((x) => x.aScore), rows.map((x) => x.bScore), 3000, alpha);
-    perModality.push({ modality: m, n: rows.length, meanDiff: r.meanDiff, ci: [r.lower, r.upper] });
+    if (rows.length < MIN_STRATUM_N) {
+      thinStrata.push({ dimension: "modality", key: m, n: rows.length, meanDiff: r.meanDiff, ci: [r.lower, r.upper] });
+    } else {
+      perModality.push({ modality: m, n: rows.length, meanDiff: r.meanDiff, ci: [r.lower, r.upper] });
+    }
   }
 
   // Per-difficulty stratification
@@ -109,9 +119,12 @@ export function discriminate(
   }
   const perDifficulty: DiscriminationReport["perDifficulty"] = [];
   for (const [d, rows] of byDiff.entries()) {
-    if (rows.length < 5) continue;
     const r = pairedBootstrap(rows.map((x) => x.aScore), rows.map((x) => x.bScore), 3000, alpha);
-    perDifficulty.push({ difficulty: d, n: rows.length, meanDiff: r.meanDiff, ci: [r.lower, r.upper] });
+    if (rows.length < MIN_STRATUM_N) {
+      thinStrata.push({ dimension: "difficulty", key: d, n: rows.length, meanDiff: r.meanDiff, ci: [r.lower, r.upper] });
+    } else {
+      perDifficulty.push({ difficulty: d, n: rows.length, meanDiff: r.meanDiff, ci: [r.lower, r.upper] });
+    }
   }
 
   const aMean = round1(aOverall.reduce((s, x) => s + x, 0) / n);
@@ -135,6 +148,9 @@ export function discriminate(
   const wrongStrata = perModality.filter((s) => s.ci[0] < 0 && s.ci[1] < 0).length
     + perDifficulty.filter((s) => s.ci[0] < 0 && s.ci[1] < 0).length;
   if (wrongStrata > 0) notes.push(`${wrongStrata} stratum/strata reverse the global ranking — investigate.`);
+  if (thinStrata.length > 0) {
+    notes.push(`${thinStrata.length} thin stratum/strata (n < ${MIN_STRATUM_N}) reported with wide CIs; treat per-cell numbers as uncertain.`);
+  }
 
   return {
     comparableKey: runA.manifest.comparableKey,
@@ -145,6 +161,7 @@ export function discriminate(
     perDim,
     perModality,
     perDifficulty,
+    thinStrata,
     verdict,
     notes,
   };
