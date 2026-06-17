@@ -46,6 +46,21 @@ function tokenHit(token: string, haystackTokens: string[]): boolean {
   return haystackTokens.some((candidate) => tokenMatches(token, candidate));
 }
 
+/**
+ * Lexical coverage: the fraction of clinical tokens in `needle` that appear in
+ * `haystack` (substring/prefix token hit via tokenHit).
+ *
+ * Known ceiling (do not overstate matcher recall): this is purely lexical. It
+ * does not expand synonyms ("AVC" vs "acidente vascular cerebral"), expand
+ * abbreviations ("TEP" vs "tromboembolismo pulmonar"), or resolve paraphrase.
+ * A radiology report that states a finding in different but clinically
+ * equivalent words can therefore be scored as a miss. The judge layer and the
+ * conservative-min combination mitigate this, but the deterministic channel has
+ * a recall ceiling versus a trained NER matcher. A locale-scoped synonym and
+ * abbreviation expansion table is proposed in bd issue laibench-kpu; it is
+ * deferred rather than landed casually because changing what the matcher
+ * accepts changes scores and risks new false positives.
+ */
 export function clinicalTokenCoverage(needle: string, haystack: string): number {
   const needleTokens = clinicalTokens(needle);
   if (needleTokens.length === 0) return 0;
