@@ -10,6 +10,8 @@ The only cases that may be published without a separate release review are synth
 
 Public cases are not a representative clinical dataset and must not be used to claim clinical validation. Real-derived, private controlled, or answer-key-bearing fixtures are not public data.
 
+The public demonstration cases are synthetic and input-only. The controlled pt-BR suite is synthetic and was authored and clinically reviewed by senior radiologists in Sao Paulo, SP, Brazil. This is an internal data-quality process. It is not an independent third-party validation, and it does not make the controlled suite an open-download benchmark. The separate public LAIBench set (2,670 cases) is the open artifact; the LAIBench Pro gold suite is controlled and aggregate-only.
+
 ## Controlled Data
 
 The full clinical corpus is not an open-download asset. Any access to real-derived or clinically realistic benchmark data requires written approval and a controlled-access agreement or data-use agreement.

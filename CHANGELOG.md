@@ -26,6 +26,23 @@ changed.
   veto catch that case. Locked by boundary tests at 0/1/5/6/100 and a
   mixed-magnitude test proving `CRIT = 3` no longer inflates.
 
+## Unreleased — positioning and provenance (docs only, no scoring change)
+
+- Added an explicit "Open vs controlled" section to the README and to
+  DATA_ACCESS_POLICY.md: the separate public LAIBench (2,670 cases) is the open,
+  downloadable artifact; the LAIBench Pro gold suite (120 controlled pt-BR
+  cases) is controlled and aggregate-only and cannot be reconstructed or
+  downloaded from this repository. Open-benchmark language must not attach to
+  the Pro gold suite.
+- Documented case provenance: public demonstration cases are synthetic and
+  input-only; the controlled pt-BR cases are synthetic and were authored and
+  clinically reviewed by senior radiologists in Sao Paulo, SP, Brazil. This is
+  an internal data-quality process, stated as distinct from independent
+  third-party adjudication (vendor-versus-external kappa), which remains future
+  work and is not claimed.
+- Added a first-party disclosure to the public leaderboard data and rendering
+  (see v3.1.0 leaderboard segregation work).
+
 ## Unreleased — 2026-06-15 — Private 120-case audit suite
 
 - Expanded the gated pt-BR controlled suite from 49 to 120 private cases using a

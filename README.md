@@ -144,6 +144,17 @@ node scripts/build-site-data.mjs --out site/data.js \
 
 Leaderboard rows disclose benchmark version, suite hash, track, scaffold class, judged/frozen status, evaluated entity, validation status, cost, latency, and scoring mode. Incompatible runs are separated by track, scaffold, locale, and suite hash. Public artifacts must not include private prompts, product routes, credentials, private file paths, raw validation ID lists, private case content, hidden judge configuration, answer keys, or proprietary schemas beyond the public contract.
 
+## Open vs controlled (read this before citing)
+
+There are two distinct artifacts, and only one is open:
+
+- **LAIBench (public).** The separate open benchmark is the 2,670-case public set. That is the downloadable, openly reproducible artifact.
+- **LAIBench Pro gold (this repository's controlled suite).** The 120-case pt-BR controlled suite is **controlled and aggregate-only**. It is **not** an open-download benchmark. Case JSON, answer keys, frozen predictions and provenance are **not** distributed here and are not available for download. A reader cannot reconstruct or download the Pro gold suite from this repository.
+
+Do not attach "open benchmark" language to the Pro gold suite. When LAIBench Pro numbers are cited, cite them as controlled, aggregate-only results locked to a specific suite hash and case count, evaluated by a first-party agent (see the leaderboard disclosure). The open-benchmark claim belongs only to the separate public LAIBench set.
+
+**Case provenance.** The public demonstration cases under `cases/public/` are synthetic and input-only. The controlled pt-BR cases are synthetic and were authored and clinically reviewed by senior radiologists in Sao Paulo, SP, Brazil. Synthetic authorship and internal senior-radiologist review are a data-quality process, not an independent third-party validation. Independent external adjudication (vendor-versus-external inter-rater kappa) is tracked as future work and is not claimed here.
+
 ## Data Boundary
 
 Public cases in this repository are synthetic input-only demos under `cases/public/`. The pt-BR controlled suite, answer keys, frozen predictions and provenance remain outside the public repository and must not be copied into public artifacts, paper supplements, or model-training datasets. See [DATA_ACCESS_POLICY.md](DATA_ACCESS_POLICY.md).
