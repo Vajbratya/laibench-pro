@@ -1,0 +1,21 @@
+{
+  "benchmarkName": "laibench-pro",
+  "benchmarkVersion": "3.0.0",
+  "id": "lite-public.pt-BR",
+  "label": "Controlled Pro Aggregate (pt-BR)",
+  "description": "Controlled pt-BR report-generation benchmark with 120 gated text fixtures. The public repository exposes methodology and aggregate leaderboard results only; case JSON, answer keys and frozen predictions are not distributed.",
+  "locale": "pt-BR",
+  "visibility": "verified",
+  "evaluationMode": "cloud-private",
+  "casesPath": null,
+  "caseCount": 120,
+  "tags": [
+    "controlled",
+    "aggregate-only",
+    "pt-BR"
+  ],
+  "recommendedTrack": "mini-agent",
+  "canonicalScaffold": "mini-laibench-agent-v1",
+  "canonicalJudgeModel": null,
+  "notes": "The current 120-case suite includes modality/anatomy/complexity quotas, 54 critical-safety cases and 23 negative-control cases. These fixtures are gated and must not be published as an open benchmark. Public comparative claims require controlled-suite verification, contamination controls and radiologist adjudication."
+}

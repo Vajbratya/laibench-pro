@@ -1,0 +1,36 @@
+{
+  "name": "laibench-pro",
+  "version": "3.0.0",
+  "license": "MIT",
+  "type": "module",
+  "description": "LAIBench Pro: CLI-first reference benchmark and leaderboard harness for radiology finding-to-report generation.",
+  "scripts": {
+    "bench": "tsx src/cli.ts",
+    "typecheck": "tsc --noEmit",
+    "suite": "tsx src/cli.ts suite",
+    "single": "tsx src/cli.ts single",
+    "validate": "tsx src/cli.ts validate-submission",
+    "eval": "tsx src/cli.ts eval-submission",
+    "leaderboard": "tsx src/cli.ts leaderboard",
+    "compare": "tsx src/cli.ts compare",
+    "smoke:mock": "tsx src/cli.ts suite --suite suites/lite-public.en-US.json --provider command --cmd \"node examples/mock-agent.mjs\" --run-name mock-agent --out runs/mock-agent.json",
+    "smoke:leaderboard": "tsx src/cli.ts leaderboard --inputs runs/mock-agent.json --out runs/leaderboard.json --markdown runs/leaderboard.md",
+    "smoke:en": "tsx src/cli.ts suite --suite suites/lite-public.en-US.json --provider command --cmd \"node examples/mock-agent.mjs\" --run-name mock-en --out runs/mock-en.json",
+    "smoke:reliability": "tsx src/cli.ts suite --suite suites/lite-public.en-US.json --provider command --cmd \"node examples/mock-agent.mjs\" --run-name mock-agent-2 --out runs/mock-agent-2.json && tsx src/cli.ts reliability --inputs runs/mock-agent.json runs/mock-agent-2.json --out runs/reliability.json --markdown runs/reliability.md",
+    "smoke:openai-compatible": "node examples/smoke-openai-compatible.mjs",
+    "guard:private": "tsx src/release-guard.ts --mode private",
+    "guard:public": "tsx src/release-guard.ts --mode public",
+    "import:private-120": "node scripts/import-reconstructed-audit-cases.mjs --limit 120",
+    "laibench:validate-adjudication": "tsx src/adjudication.ts",
+    "test": "node scripts/run-tests.mjs"
+  },
+  "engines": {
+    "node": ">=20",
+    "bun": ">=1.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.19",
+    "tsx": "^4.19.2",
+    "typescript": "^5.9.3"
+  }
+}
