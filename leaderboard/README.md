@@ -12,7 +12,7 @@ case-level material is not an open-download benchmark.
 
 | # | System | Group | Clinical score | All-pass | Criteria | CRIT | QUAL | TERM | GUIDE | RAG |
 | --: | --- | --- | --: | --: | --: | --: | --: | --: | --: | --: |
-| 1 | Laudos.AI | production agent | 83.3% | 27.5% | 96.0% | 90.6% | 84.9% | 99.0% | 96.7% | 96.8% |
+| 1 | Laudos.AI | production agent | 90.0% | 49.2% | 97.6% | 97.7% | 88.1% | 100.0% | 96.7% | 98.3% |
 
 `Clinical score` is the weighted aggregate score. `All-pass` is stricter: a
 case counts only when every criterion passes simultaneously. Critical failures

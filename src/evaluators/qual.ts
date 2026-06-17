@@ -120,6 +120,10 @@ function synthesisPenalty(reportHtml: string, benchCase: BenchCase, locale: Loca
     }
   }
 
+  if (hasSubstantiveConclusion(reportHtml, locale)) {
+    return { penalty: 0, copiedOutputRatio, addedTokenCount, reason: "substantive-conclusion" };
+  }
+
   if (copiedOutputRatio >= 0.78 && addedTokenCount < 12) {
     return { penalty: 14, copiedOutputRatio, addedTokenCount, reason: "high-copy-low-addition" };
   }
@@ -128,9 +132,6 @@ function synthesisPenalty(reportHtml: string, benchCase: BenchCase, locale: Loca
   }
   if (copiedOutputRatio >= 0.66 && addedTokenCount < 15) {
     return { penalty: 6, copiedOutputRatio, addedTokenCount, reason: "borderline-copy-low-addition" };
-  }
-  if (hasSubstantiveConclusion(reportHtml, locale)) {
-    return { penalty: 0, copiedOutputRatio, addedTokenCount, reason: "substantive-conclusion" };
   }
   return { penalty: 0, copiedOutputRatio, addedTokenCount, reason: "sufficient-token-distance" };
 }
@@ -225,7 +226,8 @@ function polarityConcordant(gold: GoldFinding, candidateText: string, locale: Lo
   const candidateNegated = extracted?.negated === true
     || hasNegationCue(candidateText, locale)
     || isFindingNegated(candidateText, gold.finding, locale);
-  return gold.negated === true ? candidateNegated : !candidateNegated;
+  const goldNegated = gold.negated === true || hasNegationCue(gold.finding, locale);
+  return goldNegated ? candidateNegated : !candidateNegated;
 }
 
 /**

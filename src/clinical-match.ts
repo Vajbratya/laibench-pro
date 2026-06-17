@@ -19,7 +19,7 @@ const CLINICAL_STOPWORDS = new Set([
 ]);
 
 const MANAGEMENT_OR_DIFFERENTIAL_RX =
-  /\b(?:sugere\s*-\s*se|recomenda\s*-\s*se|recomenda(?:mos|do|da)?|correlacao|correlacionar|endoscop|laringoscop|seguimento|acompanhamento|controle|biopsia|puncao|deve\s*-\s*se\s+considerar|nao\s+se\s+podendo\s+afastar|nao\s+e\s+possivel\s+afastar)\b/i;
+  /\b(?:sugere\s*-\s*se|recomenda\s*-\s*se|recomenda(?:mos|do|da)?|correlacao|correlacionar|endoscop|laringoscop|seguimento|acompanhamento|controle|biopsia|puncao|deve\s*-\s*se\s+considerar|nao\s+se\s+podendo\s+afastar|nao\s+e\s+possivel\s+afastar|deste\s+exame\s+e\s+feita\s+considerando|considerando\s+tambem\s+os\s+dados\s+do\s+exame)\b/i;
 
 export function clinicalTokens(value: string): string[] {
   const normalized = normalizeLoose(stripTags(value))

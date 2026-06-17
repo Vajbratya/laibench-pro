@@ -411,8 +411,8 @@ export function isNegated(sentence: string, locale: LocaleKey): boolean {
   return localeSpec.negationPatterns.some((rx) => rx.test(normalized));
 }
 
-const NEGATION_PREFIX_PT = /\b(?:sem|nao|ausencia de|livres? de|afastad[oa]s?|excluid[oa]s?|inden[ei]s?)\b/;
-const NEGATION_PREFIX_EN = /\b(?:no|without|absent|negative for|ruled out|excluded|not)\b/;
+const NEGATION_PREFIX_PT = /\b(?:sem|nao\s+(?:ha|foram?|foi|se|mais\s+se|existe(?:m)?|identificad|observad|detectad|evidenciad|caracterizad|visualizad|apresenta|demonstrad)|ausencia de|livres? de|afastad[oa]s?|excluid[oa]s?|inden[ei]s?)\b/;
+const NEGATION_PREFIX_EN = /\b(?:no|without|absent|negative for|ruled out|excluded|not\s+(?:identified|seen|detected|demonstrated|observed|present|visualized))\b/;
 const NEGATION_SUFFIX_PT = /\b(?:ausentes?|nao (?:caracterizad|identificad|evidenciad|observad|detectad)|descartad[oa]s?)\b/;
 const NEGATION_SUFFIX_EN = /\b(?:absent|not (?:identified|seen|detected|demonstrated|observed|present)|excluded|ruled out)\b/;
 

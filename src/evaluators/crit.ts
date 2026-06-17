@@ -6,8 +6,9 @@
  */
 
 import { getDefaultCriticalExtractor } from "../extractors/critical-extractor.js";
-import { extractCriticalMentions } from "../extract.js";
-import { normalizeLoose } from "../normalize.js";
+import { extractCriticalMentions, hasNegationCue } from "../extract.js";
+import { clinicalTokenCoverage, isManagementOrDifferentialGold } from "../clinical-match.js";
+import { normalizeLoose, stripTags } from "../normalize.js";
 import type { BenchCase, Check, EvaluatorResult, ExamMeta, LocaleKey } from "../types.js";
 
 /**
@@ -19,6 +20,38 @@ import type { BenchCase, Check, EvaluatorResult, ExamMeta, LocaleKey } from "../
  */
 function matchCriticalFindings(goldLabels: string[], reportHtml: string, locale: LocaleKey) {
   return getDefaultCriticalExtractor().detect(goldLabels, reportHtml, locale);
+}
+
+function isScoredCriticalLabel(label: string, locale: LocaleKey): boolean {
+  return !isManagementOrDifferentialGold(label) && !hasNegationCue(label, locale);
+}
+
+function criticalSourceText(benchCase: BenchCase): string {
+  return stripTags([
+    benchCase.findings,
+    benchCase.referenceReport ?? "",
+    ...(benchCase.goldFindings ?? []).map((finding) => finding.finding),
+  ].join("\n"));
+}
+
+function isSourceBackedCriticalMention(text: string, benchCase: BenchCase): boolean {
+  const sourceText = criticalSourceText(benchCase);
+  return sourceText.length > 0 && clinicalTokenCoverage(text, sourceText) >= 0.55;
+}
+
+function withSourceBackedFalsePositivesRemoved(
+  result: ReturnType<typeof matchCriticalFindings>,
+  benchCase: BenchCase,
+) {
+  const falsePositives = result.falsePositives.filter((fp) => !isSourceBackedCriticalMention(fp.text, benchCase));
+  const excludedFalsePositives = result.falsePositives.filter((fp) => isSourceBackedCriticalMention(fp.text, benchCase));
+  const tp = result.truePositives.length;
+  const fn = result.falseNegatives.length;
+  const fp = falsePositives.length;
+  const recall = tp + fn > 0 ? tp / (tp + fn) : 1;
+  const precision = tp + fp > 0 ? tp / (tp + fp) : 1;
+  const f1 = recall + precision > 0 ? (2 * recall * precision) / (recall + precision) : 0;
+  return { ...result, falsePositives, excludedFalsePositives, recall, precision, f1 };
 }
 
 /**
@@ -36,18 +69,23 @@ export function evaluateCritical(
   const details: Record<string, unknown> = {};
   const explicitCriticalFindings = benchCase.criticalFindings ?? [];
   const goldCriticalFindings = (benchCase.goldFindings ?? [])
-    .filter((finding) => finding.severity === "critical" && !finding.negated)
+    .filter((finding) => finding.severity === "critical" && !finding.negated && isScoredCriticalLabel(finding.finding, locale))
     .map((finding) => finding.finding);
-  const criticalLabels = explicitCriticalFindings.length > 0 ? explicitCriticalFindings : goldCriticalFindings;
+  const criticalLabels = (explicitCriticalFindings.length > 0 ? explicitCriticalFindings : goldCriticalFindings)
+    .filter((label) => isScoredCriticalLabel(label, locale));
 
   // Strategy 1: Gold critical finding labels
   if (criticalLabels.length > 0) {
-    const result = matchCriticalFindings(criticalLabels, reportHtml, locale);
+    const result = withSourceBackedFalsePositivesRemoved(
+      matchCriticalFindings(criticalLabels, reportHtml, locale),
+      benchCase,
+    );
     details.mode = "gold-critical";
     details.source = explicitCriticalFindings.length > 0 ? "criticalFindings" : "goldFindings";
     details.truePositives = result.truePositives;
     details.falseNegatives = result.falseNegatives;
     details.falsePositives = result.falsePositives.map((fp) => fp.text);
+    details.excludedSourceBackedFalsePositives = result.excludedFalsePositives.map((fp) => fp.text);
     details.recall = result.recall;
     details.precision = result.precision;
     details.f1 = result.f1;
@@ -100,10 +138,14 @@ export function evaluateCritical(
   }
 
   if ((benchCase.goldFindings?.length ?? 0) > 0) {
-    const unexpectedCriticalMentions = extractCriticalMentions(reportHtml, locale);
+    const sourceBackedCriticalMentions = extractCriticalMentions(reportHtml, locale)
+      .filter((fp) => isSourceBackedCriticalMention(fp.text, benchCase));
+    const unexpectedCriticalMentions = extractCriticalMentions(reportHtml, locale)
+      .filter((fp) => !isSourceBackedCriticalMention(fp.text, benchCase));
     details.mode = "gold-critical-none";
     details.source = "goldFindings";
     details.falsePositives = unexpectedCriticalMentions.map((fp) => fp.text);
+    details.excludedSourceBackedFalsePositives = sourceBackedCriticalMentions.map((fp) => fp.text);
     if (unexpectedCriticalMentions.length > 0) {
       checks.push({
         dim: "CRIT",

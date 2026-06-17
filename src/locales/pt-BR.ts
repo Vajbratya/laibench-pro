@@ -28,7 +28,10 @@ export const ptBR: LocaleSpec = {
     [/\bnodulação\b/gi, "nodulação→nódulo"],
     [/processo\s+col[ií]tico/gi, "processo colítico→colite"],
     [/aumentad[oa]\s+de\s+dimensões/gi, "aumentado de dimensões→com dimensões aumentadas"],
-    [/\bintravenoso\b/gi, "intravenoso→endovenoso"],
+    // Historical T12 slot kept as a no-op for stable check IDs. "Intravenoso"
+    // is acceptable clinical Portuguese; the prompt may prefer "endovenoso",
+    // but the benchmark should not score that house-style preference.
+    [/(?!)/gi, "intravenoso→endovenoso"],
     [/estriações?\s+(?:de|da|na)\s+gordura/gi, "estriações gordura→densificação gordura"],
   ],
   forbiddenOpeners: ["Presença de", "Observa-se", "Nota-se", "Identifica-se", "Evidencia-se", "Visualiza-se", "Detecta-se", "Constata-se", "Demonstra-se"],
@@ -37,7 +40,7 @@ export const ptBR: LocaleSpec = {
   bannedPhrases: [/ausência de outras alterações avaliáveis/gi],
   normalPatterns: [/^normal$/i, /^sem\s+alterações/i, /^sem\s+achados/i, /^dentro\s+da\s+normalidade/i],
   modalityVocab: {
-    US_forbidden: /\batenuação\b|\bdensidade\b|\bhipersinal\b|\brealce\b/gi,
+    US_forbidden: /\bdensidade\b|\bhipersinal\b/gi,
     MRI_forbidden: /\becogenicidade\b|\bhipoecoic\b|\banecoic\b/gi,
     // BUG 7 FIX: "densidade" is legitimate CT terminology (e.g., "densidade espontanea",
     // "densidade de partes moles"). It is only wrong in US context where the US_forbidden

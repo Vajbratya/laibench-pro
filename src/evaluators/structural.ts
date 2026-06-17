@@ -71,7 +71,26 @@ function getCompiledLocaleRegexes(localeKey: LocaleKey, locale: ReturnType<typeo
 const HEDGE_RX = /a esclarecer|nao se pode excluir|nao e possivel excluir|a depender de|a criterio|correlacionar? clinica|nao podemos afastar|sugerir? complementac|avaliar? possibilidade|convem correlacionar/i;
 
 function getTitle(html: string): string {
-  return html.replace(/^(?:\s|<br\s*\/?>)*/i, "").match(/<center><b>([^<]+)<\/b><\/center>/i)?.[1]?.trim() ?? "";
+  const centered = html.replace(/^(?:\s|<br\s*\/?>)*/i, "").match(/<center><b>([^<]+)<\/b><\/center>/i)?.[1]?.trim();
+  if (centered) return centered;
+
+  const plain = stripTags(html.replace(/<br\s*\/?>/gi, "\n")).replace(/\s+/g, " ").trim();
+  const sectionMatch = /\b(?:T[ée]cnica|An[áa]lise|Achados|Conclus[ãa]o|Impress[ãa]o|Technique|Findings|Analysis|Impression|Conclusion)\s*:?/i.exec(plain);
+  const candidate = (sectionMatch ? plain.slice(0, sectionMatch.index) : plain).trim();
+  return candidate.length <= 180 ? candidate : "";
+}
+
+function normalizeMeasurementValue(value: string): string {
+  return normalizeLoose(value)
+    .replace(/,/g, ".")
+    .replace(/\s+/g, "")
+    .replace(/(\d+)\.0+(?=\D|$)/g, "$1");
+}
+
+function measurementPresent(reportText: string, measurement: string): boolean {
+  const normalizedReport = normalizeMeasurementValue(reportText);
+  const normalizedMeasurement = normalizeMeasurementValue(measurement);
+  return normalizedMeasurement.length === 0 || normalizedReport.includes(normalizedMeasurement);
 }
 
 // Section-content extraction patterns keyed by the section regex source (a
@@ -371,7 +390,7 @@ export function runStructuralChecks(html: string, meta: ExamMeta, findingsInput:
   }
   if (measures.length > 0) {
     const reportN = normalizeLoose(stripTags(html));
-    ck(checks, "RAG", "R04", "Measurements preserved in body", "major", measures.every((measure) => reportN.includes(measure)), measures.join(", "));
+    ck(checks, "RAG", "R04", "Measurements preserved in body", "major", measures.every((measure) => measurementPresent(reportN, measure)), measures.join(", "));
   }
   if (preservation.expected.length > 0) {
     ck(checks, "RAG", "R05", "Key findings preserved", "critical", preservation.ratio >= 0.8, preservation.missing.length ? preservation.missing.join(", ") : "ok");

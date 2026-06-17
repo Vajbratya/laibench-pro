@@ -28,6 +28,11 @@ describe("hasNegationCue", () => {
   it("does not flag positive statements", () => {
     assert.equal(hasNegationCue("Occlusion of the M1 segment of the left MCA", "en-US"), false);
   });
+
+  it("does not treat uncertainty phrases as absent findings", () => {
+    assert.equal(hasNegationCue("Não sendo possível afastar pequeno trombo associado", "pt-BR"), false);
+    assert.equal(hasNegationCue("Nefrolitíase não obstrutiva à direita", "pt-BR"), false);
+  });
 });
 
 describe("critical extractor: pertinent negatives are not false positives", () => {

@@ -718,6 +718,26 @@ describe("evaluateGuidelines", () => {
     const titleCheck = structural.find((c) => c.id === "R01");
     assert.equal(titleCheck?.passed, true, titleCheck?.evidence);
   });
+
+  it("accepts a plain text leading title before the first section label", () => {
+    const findings = "Rins com sinais de nefropatia cronica bilateral.";
+    const meta = deriveExamMeta("USG ABDOME TOTAL", findings, "pt-BR");
+    const html = "ULTRASSONOGRAFIA DO ABDOME TOTAL<br><b>Análise:</b><br>Rins com sinais de nefropatia cronica bilateral.<br><b>Conclusão:</b><br>Nefropatia cronica bilateral.";
+
+    const structural = runStructuralChecks(html, meta, findings, "pt-BR");
+    const titleCheck = structural.find((c) => c.id === "R01");
+    assert.equal(titleCheck?.passed, true, titleCheck?.evidence);
+  });
+
+  it("does not penalize valid ultrasound acoustic attenuation terminology", () => {
+    const findings = "Esteatose hepatica com atenuação do feixe acústico.";
+    const meta = deriveExamMeta("USG ABDOME TOTAL", findings, "pt-BR");
+    const html = "<center><b>ULTRASSONOGRAFIA DO ABDOME TOTAL</b></center><br><b>Análise:</b><br>Parênquima hepático com ecogenicidade aumentada e atenuação do feixe acústico.<br><b>Conclusão:</b><br>Esteatose hepática.";
+
+    const structural = runStructuralChecks(html, meta, findings, "pt-BR");
+    const modalityCheck = structural.find((c) => c.id === "TM1");
+    assert.equal(modalityCheck?.passed, true, modalityCheck?.evidence);
+  });
 });
 
 // ---- Quality evaluator tests ----
@@ -1213,6 +1233,26 @@ describe("BUG 3: Pertinent negatives NOT flagged as hallucinations", () => {
     assert.equal(qg07?.passed, true);
   });
 
+  it("does not deduct for concise source-faithful reports with a useful conclusion", () => {
+    const benchCase = makeCase({
+      exam: "TC TORAX",
+      locale: "pt-BR",
+      findings: "Pequeno nódulo pulmonar subpleural na base esquerda. Pectus excavatum. Ausência de linfonodomegalias mediastinais ou hilares.",
+      goldFindings: [
+        { finding: "Pequeno nódulo pulmonar subpleural na base esquerda", severity: "minor" },
+        { finding: "Pectus excavatum", severity: "minor" },
+        { finding: "Ausência de linfonodomegalias mediastinais ou hilares", severity: "minor", negated: true },
+      ],
+    });
+    const meta = makeMeta({ modality: "CT", region: "chest" });
+    const html = "<b>Análise</b><br>Pequeno nódulo pulmonar subpleural na base esquerda. Pectus excavatum. Ausência de linfonodomegalias mediastinais ou hilares.<br><b>Conclusão</b><br>Pequeno nódulo pulmonar subpleural inespecífico na base esquerda. Pectus excavatum.";
+
+    const result = evaluateQuality(html, benchCase, "pt-BR", meta, []);
+    const qg07 = result.checks.find((c) => c.id === "QG07");
+
+    assert.equal(qg07?.passed, true, qg07?.evidence);
+  });
+
   it("fails negated gold findings when the report states the opposite positive finding", () => {
     const benchCase = makeCase({
       findings: "No pneumothorax. No midline shift.",
@@ -1229,6 +1269,23 @@ describe("BUG 3: Pertinent negatives NOT flagged as hallucinations", () => {
 
     assert.equal(matches.every((m) => m.matchType === "missed"), true);
     assert.ok(result.score < 80, `opposite polarity should not pass quality scoring, got ${result.score}`);
+  });
+
+  it("preserves pt-BR uncertainty findings without treating them as negated absences", () => {
+    const benchCase = makeCase({
+      findings: "Na junção com a veia cava superior, não sendo possível afastar pequeno trombo associado.",
+      goldFindings: [
+        { finding: "Na junção com a veia cava superior, não sendo possível afastar pequeno trombo associado", severity: "critical" },
+      ],
+    });
+    const meta = makeMeta({ modality: "CT", region: "chest" });
+    const html = "<b>Achados</b><br>Na junção com a veia cava superior, não sendo possível afastar pequeno trombo associado.<br><b>Conclusão</b><br>Possibilidade de pequeno trombo associado.";
+
+    const result = evaluateQuality(html, benchCase, "pt-BR", meta, []);
+    const qg02 = result.checks.find((c) => c.id === "QG02");
+
+    assert.equal(qg02, undefined);
+    assert.ok(result.score >= 88, `expected preserved critical uncertainty finding, got ${result.score}`);
   });
 
   it("fails synthesis for generic templated output without a conclusion section", () => {
@@ -1616,6 +1673,40 @@ describe("BUG F.3: Negated gold critical findings NOT counted as TP in evaluateC
 
     assert.equal(precision?.passed, false);
     assert.equal(precision?.severity, "critical");
+  });
+
+  it("does not count source-backed critical mentions as hallucinated precision failures", () => {
+    const benchCase = makeCase({
+      findings: "Falhas de enchimento em ramos arteriais lobares, compativeis com tromboembolismo pulmonar.",
+      goldFindings: [
+        { finding: "Falhas de enchimento em ramos arteriais lobares", severity: "major" },
+      ],
+    });
+    const meta = makeMeta();
+    const html = "<b>Achados</b><br>Falhas de enchimento em ramos arteriais lobares, compatíveis com tromboembolismo pulmonar.<br><b>Conclusão</b><br>Tromboembolismo pulmonar.";
+
+    const result = evaluateCritical(html, benchCase, "pt-BR", meta, []);
+
+    assert.equal(result.score, 100);
+    assert.equal(result.checks.every((check) => check.passed), true);
+    assert.deepEqual(result.details.falsePositives, []);
+  });
+
+  it("does not score administrative comparison boilerplate as a critical finding", () => {
+    const benchCase = makeCase({
+      findings: "A análise deste exame é feita considerando também os dados do exame anterior.",
+      criticalFindings: ["DESTE EXAME E FEITA CONSIDERANDO TAMBEM OS DADOS DO EXAME DE [DATE]"],
+      goldFindings: [
+        { finding: "DESTE EXAME E FEITA CONSIDERANDO TAMBEM OS DADOS DO EXAME DE [DATE]", severity: "critical" },
+      ],
+    });
+    const meta = makeMeta();
+    const html = "<b>Achados</b><br>Relatório comparativo com exame anterior.<br><b>Conclusão</b><br>Sem achado crítico novo.";
+
+    const result = evaluateCritical(html, benchCase, "pt-BR", meta, []);
+
+    assert.equal(result.score, 100);
+    assert.equal(result.checks.every((check) => check.passed), true);
   });
 });
 
