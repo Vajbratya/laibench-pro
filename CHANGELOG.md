@@ -1,5 +1,31 @@
 # Changelog
 
+## v3.1.0 — LAIBench Pro — judge-scale safety fix (affects scores)
+
+CLI contract and run-artifact JSON schema remain backward compatible (no field
+renamed or removed). This bump changes scores for one specific case, so it is a
+minor version bump and `benchmarkVersion` moves to `3.1.0` on the lite-public
+suites. The provenance `scoringHash` changes automatically because `scoring.ts`
+changed.
+
+### Fixed (correctness — affects scores)
+- **Judge score-scale inflation (safety direction).** `combineScores` used a
+  per-value rule (`value <= 5 ? value * 20`) to auto-detect a 0-5 Likert score
+  versus a 0-100 score. The judge contract requests 0-100, so a genuinely
+  catastrophic dimension (for example `CRIT = 3` out of 100) fell into the `<= 5`
+  branch and was multiplied into a passing `60`, with a hard discontinuity at the
+  5/6 boundary. That inflated the worst reports, which is the unsafe failure
+  direction for a safety benchmark. Scale is now decided once at the RESULT
+  level: a result is read as Likert only when EVERY emitted dimension score is
+  `<= 5`. A low score sitting next to normal scores is now read as a genuine
+  0-100 low score. The 0-5 Likert convention used by calibration fixtures is
+  preserved (a result whose dimensions are all `<= 5` still scales by 20).
+  Residual limit, documented inline: a fully catastrophic 0-100 result whose
+  every dimension is `<= 5` is still treated as Likert because it cannot be
+  distinguished without an explicit scale; conservative-min and the critical
+  veto catch that case. Locked by boundary tests at 0/1/5/6/100 and a
+  mixed-magnitude test proving `CRIT = 3` no longer inflates.
+
 ## Unreleased — 2026-06-15 — Private 120-case audit suite
 
 - Expanded the gated pt-BR controlled suite from 49 to 120 private cases using a

@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { scoreDimensions, combineScores, scoreDimensionsWithEvaluators, DIMS, WEIGHTS } from "./scoring.js";
+import { scoreDimensions, combineScores, scoreDimensionsWithEvaluators, judgeScoresAreLikert, DIMS, WEIGHTS } from "./scoring.js";
 import { parseJudgeResponse } from "./judge.js";
 import { extractFindings, extractClassifications, extractRecommendations, extractCriticalMentions, normalizeClassificationValue, isNegated } from "./extract.js";
 import { evaluateGuidelines } from "./evaluators/guide.js";
@@ -346,6 +346,47 @@ describe("combineScores", () => {
     const det = scoreDimensions(checks);
     const combined = combineScores(det.dims, null, checks);
     assert.equal(combined.gateReasons.includes("deterministic critical failure"), false);
+  });
+});
+
+describe("judge score scale (anti-inflation boundary)", () => {
+  function dets(score: number): Record<Dim, DimSummary> {
+    const d = {} as Record<Dim, DimSummary>;
+    for (const dim of DIMS) d[dim] = { score, pass: 10, total: 10, critFails: 0, verdict: "PASS", appliedWeight: WEIGHTS[dim] };
+    return d;
+  }
+  function judgeWith(scores: Partial<Record<Dim, number>>) {
+    return { verdict: "PARTIAL" as const, scores, overall: 0, critical_failures: [], missing: [], hallucinated: [], spot_checks: [], fix: "" };
+  }
+
+  it("judgeScoresAreLikert is true only when every emitted dim is <= 5", () => {
+    assert.equal(judgeScoresAreLikert([3, 4, 5]), true);
+    assert.equal(judgeScoresAreLikert([3, 88]), false, "mixed magnitudes are not Likert");
+    assert.equal(judgeScoresAreLikert([6]), false);
+    assert.equal(judgeScoresAreLikert([]), false, "no scores is not Likert");
+    assert.equal(judgeScoresAreLikert([undefined, null, 4]), true);
+  });
+
+  it("does NOT inflate a catastrophic 0-100 dimension when other dims are high", () => {
+    // CRIT=3 is 3/100 (catastrophic), not 3/5. The old rule turned it into 60.
+    const result = combineScores(dets(100), judgeWith({ CRIT: 3, QUAL: 88, TERM: 90, GUIDE: 85, RAG: 80 }), []);
+    assert.equal(result.combined.CRIT, 3, "min(det=100, judge=3) must stay 3, never 60");
+  });
+
+  it("preserves the 0-5 Likert convention when every dim is <= 5", () => {
+    const result = combineScores(dets(100), judgeWith({ CRIT: 4, QUAL: 4, TERM: 4, GUIDE: 4, RAG: 4 }), []);
+    assert.equal(result.combined.CRIT, 80, "4/5 Likert -> 80 on a 0-100 scale");
+  });
+
+  it("holds the scale at the 0/1/5/6/100 boundaries", () => {
+    // All-Likert results (every dim <= 5) scale by 20.
+    assert.equal(combineScores(dets(100), judgeWith({ CRIT: 0, QUAL: 0, TERM: 0, GUIDE: 0, RAG: 0 }), []).combined.CRIT, 0);
+    assert.equal(combineScores(dets(100), judgeWith({ CRIT: 1, QUAL: 1, TERM: 1, GUIDE: 1, RAG: 1 }), []).combined.CRIT, 20);
+    assert.equal(combineScores(dets(100), judgeWith({ CRIT: 5, QUAL: 5, TERM: 5, GUIDE: 5, RAG: 5 }), []).combined.CRIT, 100);
+    // Any dim > 5 means the result is read as a genuine 0-100 result.
+    assert.equal(combineScores(dets(100), judgeWith({ CRIT: 6, QUAL: 6, TERM: 6, GUIDE: 6, RAG: 6 }), []).combined.CRIT, 6);
+    assert.equal(combineScores(dets(100), judgeWith({ CRIT: 5, QUAL: 100, TERM: 100, GUIDE: 100, RAG: 100 }), []).combined.CRIT, 5);
+    assert.equal(combineScores(dets(100), judgeWith({ CRIT: 100, QUAL: 100, TERM: 100, GUIDE: 100, RAG: 100 }), []).combined.CRIT, 100);
   });
 });
 
