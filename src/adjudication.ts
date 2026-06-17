@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { readFileSync } from "node:fs";
+import { logger } from "./log.js";
 import type { Dim, Verdict } from "./types.js";
 
 const DIMS: Dim[] = ["CRIT", "QUAL", "TERM", "GUIDE", "RAG"];
@@ -174,6 +175,17 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const args = parseCli(process.argv.slice(2));
   const record = JSON.parse(readFileSync(args.file, "utf8")) as Partial<AdjudicationRecord>;
   const result = validateAdjudicationRecord(record, { suiteId: args.suiteId, suiteHash: args.suiteHash });
-  console.log(JSON.stringify(result, null, 2));
-  if (!result.valid) process.exit(1);
+  // The JSON result is the machine-consumable payload; emit it verbatim.
+  logger.raw(JSON.stringify(result, null, 2));
+  if (result.valid) {
+    logger.info("adjudication valid", {
+      reviewers: result.metrics.reviewerCount,
+      cases: result.metrics.caseCount,
+      clinicalAgreement: result.metrics.clinicalAcceptabilityAgreement,
+      dimAgreement: result.metrics.perDimensionExactAgreement,
+    });
+  } else {
+    logger.error("adjudication invalid", { errors: result.errors.length });
+    process.exit(1);
+  }
 }

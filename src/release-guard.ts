@@ -2,6 +2,7 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
+import { logger } from "./log.js";
 
 export type ReleaseMode = "private" | "public";
 
@@ -159,12 +160,12 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const issues = auditReleaseFiles(loadReleaseFiles(root), mode);
   const blocking = issues.filter((issue) => issue.severity === "error");
   for (const issue of issues) {
-    const prefix = issue.severity === "error" ? "ERROR" : "WARN";
-    console.error(`${prefix} ${issue.path} [${issue.rule}] ${issue.message}`);
+    const emit = issue.severity === "error" ? logger.error : logger.warn;
+    emit("release-guard issue", { path: issue.path, rule: issue.rule, msg: issue.message });
   }
   if (blocking.length > 0) {
-    console.error(`release-guard: ${blocking.length} blocking issue(s) for ${mode} mode.`);
+    logger.error("release-guard blocked", { mode, blocking: blocking.length });
     process.exit(1);
   }
-  console.log(`release-guard: ok (${mode}, ${issues.length} warning(s)).`);
+  logger.info("release-guard ok", { mode, warnings: issues.length });
 }
