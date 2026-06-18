@@ -1,5 +1,31 @@
 # Changelog
 
+## v3.8.0 — LAIBench Pro — clause-scoped negation in the gold-critical gate (affects scores)
+
+CLI contract and run-artifact JSON schema remain backward compatible (the
+critical-anchor regexes are now exported, additive only). This closes a
+critical-gate escape, so `benchmarkVersion` moves to `3.8.0` and `scoringHash`
+updates.
+
+### Fixed (correctness — affects scores, safety direction)
+- **A compound affirmed critical gold label was dropped from the gate.**
+  `isScoredCriticalLabel` used a whole-label `hasNegationCue`, so a gold label
+  that affirmed a critical finding but appended an unrelated pertinent negative
+  (`Acute hemorrhage, no midline shift`; `Hematoma subdural agudo, sem desvio da
+  linha média`) was treated as negated, removed from the scored critical labels,
+  and produced no `CG01`/`CG02` checks: a model that omitted the affirmed
+  critical escaped the hard-FAIL veto, the inverse of the central invariant.
+  This is the gold-label instance of the clause-vs-sentence negation bug-class
+  already fixed for `extractCriticalMentions` (v3.5.0) and the R02 swap loop
+  (v3.6.0/v3.7.0). The label is now scored when ANY recognized critical anchor
+  is affirmed within its own clause (handles either ordering of the affirmed and
+  negated parts); when the label has no recognized critical anchor, it falls
+  back to the original whole-label check so a pure pertinent negative
+  (`No testicular torsion`, `Sem hemorragia`) is still correctly excluded (no
+  opposite-direction over-gating). Locked by `src/evaluators/crit.test.ts`.
+  Note: the analogous whole-string check in `qual.ts` (`polarityConcordant` gold
+  polarity) is tracked for a consistent shared-helper follow-up.
+
 ## v3.7.0 — LAIBench Pro — clause-scoped negation in the R02 swap loop (affects scores)
 
 CLI contract and run-artifact JSON schema remain backward compatible. This

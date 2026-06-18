@@ -6,7 +6,7 @@
  */
 
 import { getDefaultCriticalExtractor } from "../extractors/critical-extractor.js";
-import { extractCriticalMentions, hasNegationCue } from "../extract.js";
+import { extractCriticalMentions, hasNegationCue, isFindingNegated, CRITICAL_KEYWORDS_PT, CRITICAL_KEYWORDS_EN } from "../extract.js";
 import { clinicalTokenCoverage, isManagementOrDifferentialGold } from "../clinical-match.js";
 import { normalizeLoose, stripTags } from "../normalize.js";
 import type { BenchCase, Check, EvaluatorResult, ExamMeta, LocaleKey } from "../types.js";
@@ -23,7 +23,21 @@ function matchCriticalFindings(goldLabels: string[], reportHtml: string, locale:
 }
 
 function isScoredCriticalLabel(label: string, locale: LocaleKey): boolean {
-  return !isManagementOrDifferentialGold(label) && !hasNegationCue(label, locale);
+  if (isManagementOrDifferentialGold(label)) return false;
+  // Clause-scoped negation, anchored on the critical term. A whole-label
+  // hasNegationCue() check dropped an AFFIRMED critical whenever the label also
+  // carried an unrelated pertinent negative ("Acute hemorrhage, no midline
+  // shift"; "Hematoma subdural agudo, sem desvio da linha media"), un-gating a
+  // real critical miss. We instead score the label if ANY recognized critical
+  // anchor is affirmed within its own clause (handles either ordering of the
+  // affirmed and negated parts). When the label contains no recognized critical
+  // anchor to clause-scope on, fall back to the original whole-label check so a
+  // pure pertinent negative ("No testicular torsion", "Sem hemorragia") is still
+  // correctly excluded.
+  const anchorRx = locale === "en-US" ? CRITICAL_KEYWORDS_EN : CRITICAL_KEYWORDS_PT;
+  const anchors = label.match(new RegExp(anchorRx.source, "gi")) ?? [];
+  if (anchors.length === 0) return !hasNegationCue(label, locale);
+  return anchors.some((anchor) => !isFindingNegated(label, anchor, locale));
 }
 
 function criticalSourceText(benchCase: BenchCase): string {
