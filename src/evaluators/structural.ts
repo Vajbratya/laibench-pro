@@ -90,7 +90,12 @@ function normalizeMeasurementValue(value: string): string {
 function measurementPresent(reportText: string, measurement: string): boolean {
   const normalizedReport = normalizeMeasurementValue(reportText);
   const normalizedMeasurement = normalizeMeasurementValue(measurement);
-  return normalizedMeasurement.length === 0 || normalizedReport.includes(normalizedMeasurement);
+  if (normalizedMeasurement.length === 0) return true;
+  // Exact-boundary match, NOT naive substring. A digit or decimal point
+  // immediately to the left means a different number: gold "2cm" must not match
+  // inside "12cm", and "1.5cm" must not match inside "11.5cm". A tenfold size
+  // error is a dangerous measurement mistake, not a preserved measurement.
+  return new RegExp(`(?<![\\d.])${escapeRegExp(normalizedMeasurement)}`).test(normalizedReport);
 }
 
 // Section-content extraction patterns keyed by the section regex source (a

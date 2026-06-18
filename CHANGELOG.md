@@ -1,5 +1,27 @@
 # Changelog
 
+## v3.2.0 — LAIBench Pro — exact measurement matching (affects scores)
+
+CLI contract and run-artifact JSON schema remain backward compatible (internal
+helper change only, no field renamed or removed). This changes scores for cases
+with measurement size errors, so `benchmarkVersion` moves to `3.2.0` on the
+lite-public suites and the provenance `scoringHash` updates automatically.
+
+### Fixed (correctness — affects scores)
+- **Measurement preservation was naive substring containment.** `measurementPresent`
+  (in `evaluators/qual.ts` and `evaluators/structural.ts`) tested
+  `normalizedReport.includes(normalizedMeasurement)`, so gold `2 cm` scored as
+  preserved inside a report stating `12 cm`, `3 mm` inside `13 mm`, and `1,5 cm`
+  inside `11,5 cm`. A tenfold size error, one of the most clinically dangerous
+  mistakes a report can make, was counted as a correct measurement at `QG04`
+  (QUAL), `R04` (RAG, major), and inflated the QUAL partial-match bonus.
+  Matching is now exact-boundary: a digit or decimal point immediately to the
+  left of the candidate disqualifies it (`(?<![\d.])`), so `2cm` no longer
+  matches inside `12cm` or `1.5cm`. True matches are preserved, including
+  comma/dot, trailing `.0`, and multi-axis (`18 x 12 x 15 mm`) forms. Locked by
+  `src/evaluators/measurement.test.ts` (size errors fail at R04 and QG04 on both
+  locales; true matches still pass).
+
 ## v3.1.0 — LAIBench Pro — scoring safety and anti-aesthetic hardening (affects scores)
 
 CLI contract and run-artifact JSON schema remain backward compatible (no field
