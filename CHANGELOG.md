@@ -22,6 +22,16 @@ lite-public suites and the provenance `scoringHash` updates automatically.
   `src/evaluators/measurement.test.ts` (size errors fail at R04 and QG04 on both
   locales; true matches still pass).
 
+### Reporting fixes (no score change, benchmarkVersion unchanged)
+- **Bootstrap p-value could report `0.0000`.** `pairedBootstrap` (`src/kappa.ts`)
+  computed the two-sided p-value as `extreme / nResamples`, so when no centered
+  resample was as extreme as the observed difference it returned exactly 0, an
+  impossible Monte-Carlo certainty surfaced at the headline discrimination claim
+  (`discriminate()` and the consolidated report). It now uses the Davison and
+  Hinkley (1997) add-one estimator `(extreme + 1) / (nResamples + 1)`, bounded
+  below by `1/(N+1)`. `meanDiff`, the CI, and every case score/verdict are
+  unchanged, so `benchmarkVersion` does not move.
+
 ## v3.1.0 — LAIBench Pro — scoring safety and anti-aesthetic hardening (affects scores)
 
 CLI contract and run-artifact JSON schema remain backward compatible (no field
