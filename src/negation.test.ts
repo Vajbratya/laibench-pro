@@ -141,4 +141,20 @@ describe("R02 pt-BR laterality swap (vowel-ending stems)", () => {
     assert.ok(r02);
     assert.equal(r02!.passed, true, `R02 should pass, got: ${r02!.evidence}`);
   });
+
+  it("catches a swap even when the finding sentence carries an unrelated negation", () => {
+    // Swap (direita -> esquerda) in a sentence that also contains a pertinent
+    // negative ("sem realce"). The old whole-sentence negation skip hid the
+    // swap; clause-scoped negation on the finding noun catches it.
+    const meta = deriveExamMeta("Ultrassonografia", "Nodulo solido na mama direita.", "pt-BR");
+    const html =
+      "<center><b>ULTRASSONOGRAFIA</b></center><br><b>Analise</b><br>" +
+      "Nodulo solido na mama esquerda, sem realce significativo ao Doppler." +
+      "<br><b>Conclusao</b><br>Nodulo na mama esquerda.";
+    const checks = runStructuralChecks(html, meta, "Nodulo solido na mama direita.", "pt-BR");
+    const r02 = checks.find((c) => c.id === "R02");
+    assert.ok(r02);
+    assert.equal(r02!.passed, false, `R02 should catch the swap, got: ${r02!.evidence}`);
+    assert.match(String(r02!.evidence), /SWAP/);
+  });
 });

@@ -1,5 +1,22 @@
 # Changelog
 
+## v3.7.0 — LAIBench Pro — clause-scoped negation in the R02 swap loop (affects scores)
+
+CLI contract and run-artifact JSON schema remain backward compatible. This
+extends R02 swap detection, so `benchmarkVersion` moves to `3.7.0` and
+`scoringHash` updates.
+
+### Fixed (correctness — affects scores, safety direction)
+- **The R02 swap loop skipped a whole report sentence on any negation cue.** It
+  used `hasNegationCue(rs)`, so a laterality swap in a sentence that also carried
+  an unrelated pertinent negative (`nódulo à esquerda, sem realce significativo`)
+  was skipped entirely and the swap went undetected. It now uses the
+  clause-scoped `isFindingNegated(rs, noun)`, so the loop skips only when the
+  finding's own clause is negated (the contralateral-normal exemption is
+  preserved) while still catching a swap whose sentence happens to contain an
+  unrelated negation. Immediate follow-up to the v3.6.0 vowel-aware regex fix.
+  Locked by `src/negation.test.ts`.
+
 ## v3.6.0 — LAIBench Pro — pt-BR laterality-swap detection (affects scores)
 
 CLI contract and run-artifact JSON schema remain backward compatible. This

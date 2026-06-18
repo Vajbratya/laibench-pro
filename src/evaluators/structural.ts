@@ -5,7 +5,7 @@
  */
 
 import { getLocale } from "../locales/index.js";
-import { hasNegationCue } from "../extract.js";
+import { hasNegationCue, isFindingNegated } from "../extract.js";
 import { escapeRegExp, extractLateralityTokens, extractLevelTokens, extractMeasurements, matchAll, normalizeLoose, stripTags } from "../normalize.js";
 import type { Check, ExamMeta, LocaleKey, Severity } from "../types.js";
 
@@ -359,8 +359,10 @@ export function runStructuralChecks(html: string, meta: ExamMeta, findingsInput:
       for (const rs of reportSentences) {
         // A negated contralateral statement ("left lobe without nodules",
         // "no effusion on the right") documents the normal side — it is not a
-        // laterality swap of the positive finding. Skip it.
-        if (hasNegationCue(rs, localeKey)) continue;
+        // laterality swap of the positive finding. Skip only when THIS finding's
+        // clause is negated, so a swap is not hidden by an unrelated negation
+        // elsewhere in the sentence ("nodulo a esquerda, sem realce").
+        if (isFindingNegated(rs, noun, localeKey)) continue;
         const reportHasRight = /\b(?:direit[ao]s?|right)\b/.test(rs);
         const reportHasLeft = /\b(?:esquerd[ao]s?|left)\b/.test(rs);
 
