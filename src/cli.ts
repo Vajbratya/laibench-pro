@@ -260,12 +260,21 @@ function buildGenerator(flags: Flags): ProviderBuild {
     const model = required(flags, "model");
     const apiKey = getString(flags, "api-key") ?? process.env.OPENROUTER_API_KEY;
     if (!apiKey) throw new Error("Missing OpenRouter API key. Use --api-key or OPENROUTER_API_KEY.");
+    // Footgun guard: OpenRouter ":free" endpoints require consent to free-model
+    // training. With the default data_collection=deny every request 404s ("No
+    // endpoints found matching your data policy") and the model silently scores
+    // 0%. Warn loudly instead of producing a misleading zero.
+    const dataCollection = getString(flags, "data-collection") ?? process.env.OPENROUTER_DATA_COLLECTION;
+    if (model.includes(":free") && dataCollection !== "allow") {
+      console.error(`WARN openrouter free-model data policy: ${model} is a ":free" endpoint. Set --data-collection allow (or OPENROUTER_DATA_COLLECTION=allow) or every request will 404 on the free-training data policy and the model will score 0%.`);
+    }
     const noSystemPrompt = flags["no-system-prompt"] === true;
     return {
       generator: buildOpenRouterGenerator(apiKey, model, buildPricing(flags), {
         maxTokens: getNumber(flags, "max-tokens"),
         temperature: getNumber(flags, "temperature"),
         noSystemPrompt,
+        dataCollection: dataCollection === "allow" ? "allow" : dataCollection === "deny" ? "deny" : undefined,
       }),
       provider,
       modelLabel: getString(flags, "agent-name") ?? model,

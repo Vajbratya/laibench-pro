@@ -80,7 +80,7 @@ export async function callOpenRouter(args: {
   };
 }
 
-export function buildOpenRouterGenerator(apiKey: string, model: string, pricing?: Pricing, options?: { maxTokens?: number; temperature?: number; noSystemPrompt?: boolean }) {
+export function buildOpenRouterGenerator(apiKey: string, model: string, pricing?: Pricing, options?: { maxTokens?: number; temperature?: number; noSystemPrompt?: boolean; dataCollection?: OpenRouterDataCollection }) {
   return {
     name: `openrouter:${model}`,
     scaffoldId: "mini-laibench-agent-v1",
@@ -91,6 +91,7 @@ export function buildOpenRouterGenerator(apiKey: string, model: string, pricing?
         pricing,
         maxTokens: options?.maxTokens,
         temperature: options?.temperature,
+        dataCollection: options?.dataCollection,
         systemPrompt: options?.noSystemPrompt ? undefined : input.systemPrompt,
         prompt: `Exam: ${input.exam}\nFindings: ${input.findings}\n\nGenerate the complete radiology report. Output only HTML.`,
       });
