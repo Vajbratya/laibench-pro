@@ -198,22 +198,39 @@ function regularizedGammaP(a: number, x: number): number {
     return sum * Math.exp(-x + a * Math.log(x) - lnGamma(a));
   }
 
-  // Continued fraction (Lentz's method)
-  let f = 1e-30;
-  let c = 1e-30;
-  let d = 1 / (x + 1 - a);
+  // Continued fraction for the upper incomplete gamma Q(a,x) via the modified
+  // Lentz method (Numerical Recipes gcf), then return P = 1 - Q. The previous
+  // recurrence never reciprocated c and updated d/h against an inconsistent b,
+  // so it diverged (~1e27) for half-integer a (chi-squared df = 1, 3). It was
+  // masked only because the single live caller passes df = 1 and routes through
+  // the erf special-case in chi2CDF; this makes any future df != 1 use correct.
+  const FPMIN = 1e-300;
+  const EPS = 1e-12;
+  let b = x + 1 - a;
+  let c = 1 / FPMIN;
+  let d = 1 / b;
   let h = d;
-  for (let n = 1; n < 200; n++) {
-    const an = -n * (n - a);
-    const bn = x + 2 * n + 1 - a;
-    d = 1 / (bn + an * d);
-    c = bn + an / c;
-    const delta = c * d;
-    h *= delta;
-    if (Math.abs(delta - 1) < 1e-12) break;
+  for (let i = 1; i < 200; i++) {
+    const an = -i * (i - a);
+    b += 2;
+    d = an * d + b;
+    if (Math.abs(d) < FPMIN) d = FPMIN;
+    c = b + an / c;
+    if (Math.abs(c) < FPMIN) c = FPMIN;
+    d = 1 / d;
+    const del = d * c;
+    h *= del;
+    if (Math.abs(del - 1) < EPS) break;
   }
 
-  return 1 - Math.exp(-x + a * Math.log(x) - lnGamma(a)) * h;
+  const q = Math.exp(-x + a * Math.log(x) - lnGamma(a)) * h; // Q(a, x)
+  return 1 - q; // P(a, x)
+}
+
+/** Test-only hook: exercise the private chi-squared CDF, including the df != 1
+ * continued-fraction branch that has no live caller today. */
+export function chi2CDFForTest(x: number, df: number): number {
+  return chi2CDF(x, df);
 }
 
 /**
