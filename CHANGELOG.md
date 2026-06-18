@@ -1,5 +1,28 @@
 # Changelog
 
+## v3.4.0 — LAIBench Pro — confirmed findings with recommendations are no longer dropped (affects scores)
+
+CLI contract and run-artifact JSON schema remain backward compatible. This
+closes a critical-gate escape, changing CRIT/QUAL gating for affected cases, so
+`benchmarkVersion` moves to `3.4.0` and `scoringHash` updates.
+
+### Fixed (correctness — affects scores, safety direction)
+- **A confirmed critical finding that appended a recommendation was dropped from
+  the gate.** `isManagementOrDifferentialGold` matched the whole gold string
+  against one management/differential regex, so `massa pulmonar suspeita,
+  recomenda-se biopsia` (a confirmed suspicious mass plus a recommendation)
+  matched `recomenda-se`/`biopsia` and was classified management. It was then
+  removed from `criticalLabels` (crit.ts) and `scoredGoldFindings` (qual.ts), so
+  omitting the mass triggered no `CG01`/`CG02`/`QG02` failure: a critical
+  omission could reach `CRIT = 100`. The classifier now short-circuits as exempt
+  only on genuine uncertainty/differential phrasing (`não se podendo afastar`,
+  `não sendo possível afastar`, `consider a hipótese`), and for management verbs
+  exempts only when no confirmed finding clause remains after the recommendation
+  clauses are stripped. Confirmed findings with appended recommendations are
+  scored again; pure recommendations and hedged differentials stay exempt
+  (intentional uncertainty-exemption tests still pass). Locked by
+  `src/clinical-match.test.ts`.
+
 ## v3.3.0 — LAIBench Pro — per-dimension critical cap parity (affects scores)
 
 CLI contract and run-artifact JSON schema remain backward compatible (no field

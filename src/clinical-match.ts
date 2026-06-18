@@ -18,8 +18,19 @@ const CLINICAL_STOPWORDS = new Set([
   "preservadas", "conservado", "conservada", "conservados", "conservadas", "ausencia",
 ]);
 
-const MANAGEMENT_OR_DIFFERENTIAL_RX =
-  /\b(?:sugere\s*-\s*se|recomenda\s*-\s*se|recomenda(?:mos|do|da)?|correlacao|correlacionar|endoscop|laringoscop|seguimento|acompanhamento|controle|biopsia|puncao|deve\s*-\s*se\s+considerar|nao\s+se\s+podendo\s+afastar|nao\s+e\s+possivel\s+afastar|deste\s+exame\s+e\s+feita\s+considerando|considerando\s+tambem\s+os\s+dados\s+do\s+exame)\b/i;
+// Uncertainty / differential phrasing. A gold finding stated as "cannot be
+// excluded" or "consider the hypothesis of" is NOT a mandatory finding: you
+// cannot gate the omission of something the source itself only raised as a
+// possibility. Matching this exempts the finding regardless of any appended
+// recommendation.
+const HEDGE_DIFFERENTIAL_RX =
+  /\b(?:nao\s+se\s+podendo\s+afastar|nao\s+sendo\s+poss[ií]vel\s+afastar|nao\s+e\s+poss[ií]vel\s+afastar|nao\s+podemos\s+afastar|deve\s*-?\s*se\s+considerar|considerar\s+a\s+hipotese|hipotese\s+(?:de|diagnostica)|a\s+esclarecer|a\s+criterio|considerando\s+tambem\s+os\s+dados|deste\s+exame\s+e\s+feita\s+considerando)\b/i;
+
+// Management / recommendation verbs. These describe what to DO next, not a
+// finding to preserve. A clause that is purely a recommendation is exempt, but
+// a confirmed finding with an appended recommendation must still be scored.
+const MANAGEMENT_VERB_RX =
+  /\b(?:sugere\s*-\s*se|sugerimos|recomenda\s*-\s*se|recomenda(?:mos|do|da)?|correlacao|correlacionar|endoscop|laringoscop|seguimento|acompanhamento|controle|biopsia|puncao)\b/i;
 
 export function clinicalTokens(value: string): string[] {
   const normalized = normalizeLoose(stripTags(value))
@@ -79,7 +90,22 @@ export function clinicalTokenSimilarity(a: string, b: string): number {
 }
 
 export function isManagementOrDifferentialGold(value: string): boolean {
-  return MANAGEMENT_OR_DIFFERENTIAL_RX.test(normalizeLoose(value));
+  const normalized = normalizeLoose(value);
+  // Uncertainty / differential phrasing is never a mandatory finding.
+  if (HEDGE_DIFFERENTIAL_RX.test(normalized)) return true;
+  // No management verb at all: an ordinary, gradeable finding.
+  if (!MANAGEMENT_VERB_RX.test(normalized)) return false;
+  // Has a management verb. Exempt ONLY if it is purely a recommendation: after
+  // dropping the clauses that carry management verbs, no substantive confirmed
+  // finding remains. This keeps "recomenda-se controle" exempt while still
+  // scoring a confirmed finding that merely appends a recommendation, e.g.
+  // "massa pulmonar suspeita, recomenda-se biopsia" (the mass must be reported).
+  const residual = normalized
+    .split(/[.,;\n]/)
+    .map((clause) => clause.trim())
+    .filter((clause) => clause.length > 0 && !MANAGEMENT_VERB_RX.test(clause))
+    .join(" ");
+  return clinicalTokens(residual).length < 2;
 }
 
 function splitClinicalClauses(value: string): string[] {
