@@ -111,11 +111,21 @@ export function scoreDimensionsWithEvaluators(
     const evalResult = evaluatorResults.find((e) => e.dim === dim);
     if (evalResult && evalResult.score >= 0) {
       // Evaluator provides a direct 0-100 score
-      const score = round1(Math.max(0, Math.min(100, evalResult.score)));
+      let score = round1(Math.max(0, Math.min(100, evalResult.score)));
       const evalChecks = evalResult.checks;
       const pass = evalChecks.filter((c) => c.passed).length;
       const total = evalChecks.length;
       const critFails = evalChecks.filter((c) => !c.passed && c.severity === "critical").length;
+      const majorFails = evalChecks.filter((c) => !c.passed && c.severity === "major").length;
+
+      // Parity with scoreDimensions: a critically-failing dimension cannot keep a
+      // high numeric score. Without this cap the evaluator overlay would inflate
+      // averagePerDim (the per-dimension leaderboard column) and the
+      // conservative-min(det, judge) input even though the case is gated to FAIL
+      // elsewhere, so two models with different critical-miss counts would show
+      // indistinguishable dimension scores.
+      if (critFails > 0) score = Math.min(score, Math.max(20, 60 - Math.min(critFails - 1, 2) * 20));
+      else if (majorFails >= 3) score = Math.min(score, 70);
 
       const verdict: Verdict = critFails > 0 ? "FAIL" : score >= 80 ? (pass === total ? "PASS" : "PARTIAL") : score >= 50 ? "PARTIAL" : "FAIL";
       baseResult.dims[dim] = { score, pass, total, critFails, verdict, appliedWeight: 0 };

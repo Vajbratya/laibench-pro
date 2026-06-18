@@ -1,5 +1,28 @@
 # Changelog
 
+## v3.3.0 — LAIBench Pro — per-dimension critical cap parity (affects scores)
+
+CLI contract and run-artifact JSON schema remain backward compatible (no field
+renamed or removed). This corrects per-dimension scores for cases where a
+gold-critical evaluator emits a high numeric score alongside a failed critical
+check, so `benchmarkVersion` moves to `3.3.0` and `scoringHash` updates.
+
+### Fixed (correctness — affects scores)
+- **Two scorers disagreed on the critical-failure dimension cap.**
+  `scoreDimensions` caps a dimension score when it has critical failures
+  (`min(score, max(20, 60 - ...))`), but the production path
+  `scoreDimensionsWithEvaluators` took the evaluator score verbatim and never
+  re-applied that cap. A gold-critical CRIT evaluator emitting, for example, 88
+  alongside a failed critical check kept `CRIT = 88`, inflating `averagePerDim`
+  (the per-dimension leaderboard column that ranks models on critical-finding
+  competence) and the `min(det, judge)` combine input, so two models with
+  different critical-miss counts could show indistinguishable dimension scores.
+  The evaluator overlay now re-applies the identical critical and major caps.
+  Case verdicts are unchanged (a failed critical check still hard-FAILs the case
+  via the existing veto); only the per-dimension number is corrected downward.
+  Locked by parity tests in `scoreDimensionsWithEvaluators`. Resolves the
+  tracked two-scorer divergence.
+
 ## v3.2.0 — LAIBench Pro — exact measurement matching (affects scores)
 
 CLI contract and run-artifact JSON schema remain backward compatible (internal

@@ -165,6 +165,28 @@ describe("scoreDimensionsWithEvaluators", () => {
     const { dims } = scoreDimensionsWithEvaluators(checks, evaluatorResults);
     assert.equal(dims.RAG.score, 100);
   });
+
+  it("caps a critically-failing evaluator dimension (parity with scoreDimensions)", () => {
+    // An evaluator emits a high numeric score despite a failed critical check.
+    // Without the cap, averagePerDim and the conservative-min input would be
+    // inflated even though the case is gated to FAIL elsewhere.
+    const evaluatorResults: EvaluatorResult[] = [
+      { dim: "CRIT", score: 88, checks: [makeCheck("CRIT", "CG01", false, "critical"), makeCheck("CRIT", "CG02", true)], details: { mode: "gold-critical" } },
+    ];
+    const { dims } = scoreDimensionsWithEvaluators([], evaluatorResults);
+    assert.equal(dims.CRIT.verdict, "FAIL");
+    assert.ok((dims.CRIT.score ?? 100) <= 60, `critical-failing dim must be capped, got ${dims.CRIT.score}`);
+    // Matches the cap scoreDimensions applies for a single critical failure.
+    assert.equal(dims.CRIT.score, 60);
+  });
+
+  it("does not cap a dimension whose critical checks all pass", () => {
+    const evaluatorResults: EvaluatorResult[] = [
+      { dim: "CRIT", score: 88, checks: [makeCheck("CRIT", "CG01", true, "critical")], details: { mode: "gold-critical" } },
+    ];
+    const { dims } = scoreDimensionsWithEvaluators([], evaluatorResults);
+    assert.equal(dims.CRIT.score, 88);
+  });
 });
 
 // ---- combineScores tests ----
