@@ -111,3 +111,34 @@ describe("extractCriticalMentions clause-scoped negation", () => {
     assert.equal(m.some((x) => x.category === "acute-bleed"), true, JSON.stringify(m));
   });
 });
+
+describe("R02 pt-BR laterality swap (vowel-ending stems)", () => {
+  it("catches a pt-BR swap masked by contralateral-normal documentation", () => {
+    // Input: nodule on the RIGHT. Report: nodule moved to the LEFT, with the
+    // right lobe documented as normal - so the presence check passes (both sides
+    // appear) and only swap detection can catch the error. This was dead on
+    // pt-BR because the swap regexes required a boundary after a consonant stem.
+    const meta = deriveExamMeta("Ultrassonografia da tireoide", "Nodulo solido no lobo direito da tireoide.", "pt-BR");
+    const html =
+      "<center><b>ULTRASSONOGRAFIA DA TIREOIDE</b></center><br><b>Analise</b><br>" +
+      "Nodulo solido no lobo esquerdo da tireoide, medindo 1,8 cm. Lobo direito sem nodulos." +
+      "<br><b>Conclusao</b><br>Nodulo no lobo esquerdo da tireoide.";
+    const checks = runStructuralChecks(html, meta, "Nodulo solido no lobo direito da tireoide.", "pt-BR");
+    const r02 = checks.find((c) => c.id === "R02");
+    assert.ok(r02, "R02 must run when laterality present");
+    assert.equal(r02!.passed, false, `R02 should catch the swap, got: ${r02!.evidence}`);
+    assert.match(String(r02!.evidence), /SWAP/);
+  });
+
+  it("does not invent a pt-BR swap when the correct side is reported with a contralateral normal", () => {
+    const meta = deriveExamMeta("Ultrassonografia da tireoide", "Nodulo solido no lobo direito da tireoide.", "pt-BR");
+    const html =
+      "<center><b>ULTRASSONOGRAFIA DA TIREOIDE</b></center><br><b>Analise</b><br>" +
+      "Nodulo solido no lobo direito da tireoide, medindo 1,8 cm. Lobo esquerdo sem nodulos." +
+      "<br><b>Conclusao</b><br>Nodulo no lobo direito da tireoide.";
+    const checks = runStructuralChecks(html, meta, "Nodulo solido no lobo direito da tireoide.", "pt-BR");
+    const r02 = checks.find((c) => c.id === "R02");
+    assert.ok(r02);
+    assert.equal(r02!.passed, true, `R02 should pass, got: ${r02!.evidence}`);
+  });
+});

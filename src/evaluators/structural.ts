@@ -342,8 +342,8 @@ export function runStructuralChecks(html: string, meta: ExamMeta, findingsInput:
 
       for (const noun of findingNouns) {
         if (!inputLateralityMap.has(noun)) inputLateralityMap.set(noun, new Set());
-        if (/\b(?:direit|right)\b/.test(sn)) inputLateralityMap.get(noun)!.add("right");
-        if (/\b(?:esquerd|left)\b/.test(sn)) inputLateralityMap.get(noun)!.add("left");
+        if (/\b(?:direit[ao]s?|right)\b/.test(sn)) inputLateralityMap.get(noun)!.add("right");
+        if (/\b(?:esquerd[ao]s?|left)\b/.test(sn)) inputLateralityMap.get(noun)!.add("left");
         if (/\bbilateral\b/.test(sn)) inputLateralityMap.get(noun)!.add("bilateral");
       }
     }
@@ -361,8 +361,8 @@ export function runStructuralChecks(html: string, meta: ExamMeta, findingsInput:
         // "no effusion on the right") documents the normal side — it is not a
         // laterality swap of the positive finding. Skip it.
         if (hasNegationCue(rs, localeKey)) continue;
-        const reportHasRight = /\b(?:direit|right)\b/.test(rs);
-        const reportHasLeft = /\b(?:esquerd|left)\b/.test(rs);
+        const reportHasRight = /\b(?:direit[ao]s?|right)\b/.test(rs);
+        const reportHasLeft = /\b(?:esquerd[ao]s?|left)\b/.test(rs);
 
         // Detect swap: input says left-only but report says right (without left)
         if (sides.has("left") && !sides.has("right") && !sides.has("bilateral") && reportHasRight && !reportHasLeft) {

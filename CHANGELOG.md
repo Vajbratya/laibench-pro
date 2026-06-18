@@ -1,5 +1,28 @@
 # Changelog
 
+## v3.6.0 — LAIBench Pro — pt-BR laterality-swap detection (affects scores)
+
+CLI contract and run-artifact JSON schema remain backward compatible. This
+restores a dead critical-gate branch on the pt-BR suite, so `benchmarkVersion`
+moves to `3.6.0` and `scoringHash` updates.
+
+### Fixed (correctness — affects scores, safety direction)
+- **R02 laterality-swap detection was dead on pt-BR.** The swap regexes
+  `/\b(?:direit|right)\b/` and `/\b(?:esquerd|left)\b/` place a word boundary
+  after a consonant-ending stem, but Portuguese laterality words end in a vowel
+  (`direita`/`direito`/`esquerda`/`esquerdo`), so the boundary never matched and
+  the swap comparison (both building the input side-map and checking the report)
+  was structurally dead in pt-BR. A clean swap was still caught by the
+  boundary-free presence check (reported as `missing laterality`), but a swap
+  **masked by contralateral-normal documentation** (input "nódulo à direita";
+  report "nódulo à esquerda ... lobo direito sem nódulos") passed the critical
+  R02 gate silently on the locale the benchmark is primarily run on. The four
+  regexes are now vowel-aware and plural-tolerant (`direit[ao]s?`/`esquerd[ao]s?`),
+  matching the proven `extractLateralityTokens` convention; en-US behavior and
+  the contralateral-normal exemption are unchanged. Locked by
+  `src/negation.test.ts` (masked swap now caught; no false swap on a correct side
+  with a contralateral normal).
+
 ## v3.5.0 — LAIBench Pro — clause-scoped negation in the critical-mention filter (affects scores)
 
 CLI contract and run-artifact JSON schema remain backward compatible. This
