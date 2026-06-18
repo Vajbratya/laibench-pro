@@ -94,20 +94,41 @@ function synthesisPenalty(reportHtml: string, benchCase: BenchCase, locale: Loca
   penalty: number;
   copiedOutputRatio: number;
   addedTokenCount: number;
+  clinicalAddedTokenCount: number;
   reason: string;
 } {
   const inputTokens = new Set(synthesisTokens(benchCase.findings));
   const outputTokens = synthesisTokens(reportHtml);
   if (inputTokens.size === 0 || outputTokens.length === 0) {
-    return { penalty: 0, copiedOutputRatio: 0, addedTokenCount: 0, reason: "no-token-basis" };
+    return { penalty: 0, copiedOutputRatio: 0, addedTokenCount: 0, clinicalAddedTokenCount: 0, reason: "no-token-basis" };
   }
 
   const copiedOutputRatio = outputTokens.filter((token) => inputTokens.has(token)).length / outputTokens.length;
-  const addedTokenCount = Array.from(new Set(outputTokens)).filter((token) => !inputTokens.has(token)).length;
+  const addedTokens = Array.from(new Set(outputTokens)).filter((token) => !inputTokens.has(token));
+  const addedTokenCount = addedTokens.length;
+
+  // Padding resistance (anti-aesthetic): raw added-token count is gameable by
+  // stuffing the report with non-clinical filler/synonyms to look "synthesized".
+  // Only count added tokens that are clinically grounded in the case material
+  // (gold findings, critical findings, reference report) as real synthesis.
+  // Filler a model can pad with is not in that vocabulary and does not help it
+  // escape the penalty. When the case exposes too little clinical vocabulary
+  // beyond the input to judge this reliably, fall back to the raw count so no
+  // new false positives are introduced on thin cases.
+  const caseClinicalTokens = new Set(
+    synthesisTokens([
+      benchCase.referenceReport ?? "",
+      ...(benchCase.goldFindings ?? []).map((g) => g.finding),
+      ...(benchCase.criticalFindings ?? []),
+    ].join(" ")),
+  );
+  const clinicalAddedTokenCount = addedTokens.filter((token) => caseClinicalTokens.has(token)).length;
+  const clinicalVocabBeyondInput = Array.from(caseClinicalTokens).filter((token) => !inputTokens.has(token)).length;
+  const effectiveAdded = clinicalVocabBeyondInput >= 4 ? clinicalAddedTokenCount : addedTokenCount;
 
   const goldFindings = (benchCase.goldFindings ?? []).filter((g) => !isManagementOrDifferentialGold(g.finding));
   if (goldFindings.length > 0 && !hasRecognizableConclusionSection(reportHtml, locale)) {
-    return { penalty: 10, copiedOutputRatio, addedTokenCount, reason: "missing-conclusion-section" };
+    return { penalty: 10, copiedOutputRatio, addedTokenCount, clinicalAddedTokenCount, reason: "missing-conclusion-section" };
   }
 
   const principal = goldFindings.filter((g) => !g.negated && (g.severity === "critical" || g.severity === "major"));
@@ -116,24 +137,24 @@ function synthesisPenalty(reportHtml: string, benchCase: BenchCase, locale: Loca
     const sourceText = caseFindingsSourceText(benchCase);
     const covered = principal.filter((g) => findingReflectedInText(g.finding, conclusionText, sourceText)).length;
     if (covered === 0) {
-      return { penalty: 12, copiedOutputRatio, addedTokenCount, reason: `principalCovered=0/${principal.length}` };
+      return { penalty: 12, copiedOutputRatio, addedTokenCount, clinicalAddedTokenCount, reason: `principalCovered=0/${principal.length}` };
     }
   }
 
   if (hasSubstantiveConclusion(reportHtml, locale)) {
-    return { penalty: 0, copiedOutputRatio, addedTokenCount, reason: "substantive-conclusion" };
+    return { penalty: 0, copiedOutputRatio, addedTokenCount, clinicalAddedTokenCount, reason: "substantive-conclusion" };
   }
 
-  if (copiedOutputRatio >= 0.78 && addedTokenCount < 12) {
-    return { penalty: 14, copiedOutputRatio, addedTokenCount, reason: "high-copy-low-addition" };
+  if (copiedOutputRatio >= 0.78 && effectiveAdded < 12) {
+    return { penalty: 14, copiedOutputRatio, addedTokenCount, clinicalAddedTokenCount, reason: "high-copy-low-addition" };
   }
-  if (copiedOutputRatio >= 0.72 && addedTokenCount < 18) {
-    return { penalty: 10, copiedOutputRatio, addedTokenCount, reason: "moderate-copy-low-addition" };
+  if (copiedOutputRatio >= 0.72 && effectiveAdded < 18) {
+    return { penalty: 10, copiedOutputRatio, addedTokenCount, clinicalAddedTokenCount, reason: "moderate-copy-low-addition" };
   }
-  if (copiedOutputRatio >= 0.66 && addedTokenCount < 15) {
-    return { penalty: 6, copiedOutputRatio, addedTokenCount, reason: "borderline-copy-low-addition" };
+  if (copiedOutputRatio >= 0.66 && effectiveAdded < 15) {
+    return { penalty: 6, copiedOutputRatio, addedTokenCount, clinicalAddedTokenCount, reason: "borderline-copy-low-addition" };
   }
-  return { penalty: 0, copiedOutputRatio, addedTokenCount, reason: "sufficient-token-distance" };
+  return { penalty: 0, copiedOutputRatio, addedTokenCount, clinicalAddedTokenCount, reason: "sufficient-token-distance" };
 }
 
 type FindingMatchResult = {
@@ -592,6 +613,14 @@ function compareSections(candidateHtml: string, referenceHtml: string, locale: L
   };
 }
 
+function severityWeightedFallbackScore(checks: Check[]): number {
+  if (checks.length === 0) return 100;
+  const weight = (c: Check): number => (c.severity === "critical" ? 4 : c.severity === "major" ? 2 : 1);
+  const total = checks.reduce((sum, c) => sum + weight(c), 0);
+  const passed = checks.reduce((sum, c) => sum + (c.passed ? weight(c) : 0), 0);
+  return Math.round((passed / total) * 100);
+}
+
 /**
  * Evaluate clinical quality of a report.
  * Uses gold data when available, falls back to structural checks.
@@ -669,7 +698,7 @@ export function evaluateQuality(
       name: "Report synthesizes findings beyond input copy",
       severity: "major",
       passed: synthesis.penalty === 0,
-      evidence: `copiedOutputRatio=${Math.round(synthesis.copiedOutputRatio * 100)}% addedTokens=${synthesis.addedTokenCount} reason=${synthesis.reason}`,
+      evidence: `copiedOutputRatio=${Math.round(synthesis.copiedOutputRatio * 100)}% addedTokens=${synthesis.addedTokenCount} clinicalAddedTokens=${synthesis.clinicalAddedTokenCount} reason=${synthesis.reason}`,
     });
 
     // Measurement preservation for gold findings
@@ -776,9 +805,9 @@ export function evaluateQuality(
   // Strategy 3: Fall back to structural checks
   details.mode = "structural-fallback";
   const qualChecks = structuralChecks.filter((c) => c.dim === "QUAL");
-  const passCount = qualChecks.filter((c) => c.passed).length;
-  const totalCount = qualChecks.length;
-  const score = totalCount > 0 ? Math.round((passCount / totalCount) * 100) : 100;
+  // Severity-weighted (anti-aesthetic): a minor formatting check must not count
+  // as much as a critical content check even on the no-gold fallback path.
+  const score = severityWeightedFallbackScore(qualChecks);
 
   return { dim: "QUAL", score, checks: qualChecks, details };
 }

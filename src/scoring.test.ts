@@ -443,6 +443,57 @@ describe("anti-HealthBench invariants (no aesthetic score)", () => {
   });
 });
 
+describe("structural-fallback severity weighting (no-gold path)", () => {
+  it("ranks a lone minor aesthetic miss far above a critical content miss", () => {
+    const benchCase = makeCase(); // no gold, no reference -> structural fallback
+    const meta = makeMeta();
+    const minorOnly = [makeCheck("QUAL", "Q03", false, "minor"), makeCheck("QUAL", "Q08", true, "critical"), makeCheck("QUAL", "Q11", true, "critical")];
+    const critMiss = [makeCheck("QUAL", "Q03", true, "minor"), makeCheck("QUAL", "Q08", false, "critical"), makeCheck("QUAL", "Q11", true, "critical")];
+    const minorScore = evaluateQuality("<b>Findings</b><br>Normal.", benchCase, "en-US", meta, minorOnly).score;
+    const critScore = evaluateQuality("<b>Findings</b><br>Normal.", benchCase, "en-US", meta, critMiss).score;
+    assert.ok(minorScore > critScore, `minor-only ${minorScore} must beat critical-miss ${critScore}`);
+    assert.ok(minorScore >= 85, `a lone aesthetic miss should barely dent the score, got ${minorScore}`);
+    assert.ok(critScore <= 60, `a critical content miss should tank the score, got ${critScore}`);
+  });
+});
+
+describe("anti-compensation (form never rescues substance)", () => {
+  function dimsAll(score: number): Record<Dim, DimSummary> {
+    const d = {} as Record<Dim, DimSummary>;
+    for (const dim of DIMS) d[dim] = { score, pass: 10, total: 10, critFails: 0, verdict: "PASS", appliedWeight: WEIGHTS[dim] };
+    return d;
+  }
+
+  it("does not let perfect TERM/GUIDE lift a weak clinical dimension into PASS", () => {
+    const dims = dimsAll(100);
+    // QUAL is clinically weak (below PASS) but not a hard FAIL; every form/
+    // coverage dimension is perfect. A weighted mean would clear PASS (~92).
+    dims.QUAL = { score: 70, pass: 7, total: 10, critFails: 0, verdict: "PARTIAL", appliedWeight: WEIGHTS.QUAL };
+    const r = combineScores(dims, null, []);
+    assert.ok(r.overall < 84, `form must not lift weak QUAL into PASS, got ${r.overall}`);
+    assert.equal(r.verdict, "PARTIAL");
+    assert.ok(r.gateReasons.some((x) => /anti-compensation/.test(x)), r.gateReasons.join("; "));
+  });
+
+  it("caps when CRIT is below PASS even with everything else perfect", () => {
+    const dims = dimsAll(100);
+    dims.CRIT = { score: 80, pass: 8, total: 10, critFails: 0, verdict: "PARTIAL", appliedWeight: WEIGHTS.CRIT };
+    const r = combineScores(dims, null, []);
+    assert.ok(r.overall < 84, `got ${r.overall}`);
+    assert.ok(r.gateReasons.some((x) => /anti-compensation: CRIT/.test(x)), r.gateReasons.join("; "));
+  });
+
+  it("still PASSES a clinically strong report when only a FORM dimension is weaker", () => {
+    // CRIT and QUAL are both at/above PASS; TERM is the weak one. Form weakness
+    // may lower the score but clinical strength is allowed to carry a PASS.
+    const dims = dimsAll(95);
+    dims.TERM = { score: 78, pass: 7, total: 10, critFails: 0, verdict: "PARTIAL", appliedWeight: WEIGHTS.TERM };
+    const r = combineScores(dims, null, []);
+    assert.equal(r.verdict, "PASS", `clinical strength should carry PASS; overall=${r.overall} reasons=${r.gateReasons.join("; ")}`);
+    assert.equal(r.gateReasons.some((x) => /anti-compensation/.test(x)), false);
+  });
+});
+
 describe("parseJudgeResponse", () => {
   it("accepts fine-grained 0-100 judge scores", () => {
     const result = parseJudgeResponse(JSON.stringify({

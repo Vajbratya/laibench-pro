@@ -171,9 +171,15 @@ export function evaluateCritical(
   // Strategy 2: Fall back to structural checks
   details.mode = "structural-fallback";
   const critChecks = structuralChecks.filter((c) => c.dim === "CRIT");
-  const passCount = critChecks.filter((c) => c.passed).length;
-  const totalCount = critChecks.length;
-  const score = totalCount > 0 ? Math.round((passCount / totalCount) * 100) : 100;
+  // Severity-weighted (anti-aesthetic): a minor check must not count as much as
+  // a critical content check on the no-gold fallback path.
+  const score = ((): number => {
+    if (critChecks.length === 0) return 100;
+    const weight = (c: Check): number => (c.severity === "critical" ? 4 : c.severity === "major" ? 2 : 1);
+    const total = critChecks.reduce((sum, c) => sum + weight(c), 0);
+    const passed = critChecks.reduce((sum, c) => sum + (c.passed ? weight(c) : 0), 0);
+    return Math.round((passed / total) * 100);
+  })();
 
   return { dim: "CRIT", score, checks: critChecks, details };
 }

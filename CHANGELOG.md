@@ -1,12 +1,32 @@
 # Changelog
 
-## v3.1.0 — LAIBench Pro — judge-scale safety fix (affects scores)
+## v3.1.0 — LAIBench Pro — scoring safety and anti-aesthetic hardening (affects scores)
 
 CLI contract and run-artifact JSON schema remain backward compatible (no field
-renamed or removed). This bump changes scores for one specific case, so it is a
-minor version bump and `benchmarkVersion` moves to `3.1.0` on the lite-public
-suites. The provenance `scoringHash` changes automatically because `scoring.ts`
-changed.
+renamed or removed). This wave changes scores in the safety direction, so it is
+a minor version bump and `benchmarkVersion` moves to `3.1.0` on the lite-public
+suites. The provenance `scoringHash` changes automatically because the scoring
+sources changed.
+
+### Anti-aesthetic guarantees (affects scores)
+- **Form never rescues substance (anti-compensation cap).** `TERM` (20%) and
+  `GUIDE` (15%) together are 35% of the weighted score, enough to average a
+  clinically mediocre report up into the PASS band. A case can no longer reach
+  PASS while a clinical dimension (`CRIT` or `QUAL`) is itself below the PASS
+  threshold; the overall is capped just under PASS with gate reason
+  `anti-compensation: <dim> below PASS`. A clinically strong report whose only
+  weakness is a form dimension still PASSES. Locked by tests.
+- **Severity-weighted no-gold fallback.** The `QUAL` and `CRIT` structural
+  fallback paths scored `passed/total` unweighted, so a minor formatting check
+  counted as much as a critical content check. They are now severity-weighted
+  (critical 4, major 2, minor 1), consistent with the `GUIDE`/`RAG` fallbacks.
+  A lone minor aesthetic miss barely dents the score; a critical miss tanks it.
+- **Synthesis detector padding resistance.** The synthesis distance metric now
+  counts only clinically grounded added tokens (present in the case gold,
+  critical findings, or reference) when enough clinical vocabulary exists to
+  judge it, so a model cannot escape the copy penalty by padding with
+  non-clinical filler. Falls back to the raw count on thin cases to avoid new
+  false positives. `clinicalAddedTokens` is surfaced in the `QG07` evidence.
 
 ### Fixed (correctness — affects scores)
 - **Judge score-scale inflation (safety direction).** `combineScores` used a

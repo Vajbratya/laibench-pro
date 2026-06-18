@@ -208,6 +208,20 @@ export function combineScores(
     gateReasons.push("severity cap: deterministic dimension failure");
   }
 
+  // Anti-compensation (substance is not rescued by form): TERM (20%) and GUIDE
+  // (15%) make up 35% of the weighted score, enough to average a clinically
+  // mediocre report up into the PASS band. A case cannot reach PASS while a
+  // clinical dimension (CRIT or QUAL) is itself below PASS. This is the core
+  // anti-HealthBench invariant: form and coverage never lift weak substance.
+  const clinicalDims: Dim[] = ["CRIT", "QUAL"];
+  const weakClinical = clinicalDims.filter(
+    (dim) => combined[dim] !== null && (combined[dim] as number) < passThreshold,
+  );
+  if (weakClinical.length > 0 && overall >= passThreshold) {
+    overall = round1(passThreshold - 0.1);
+    gateReasons.push(`anti-compensation: ${weakClinical.join("/")} below PASS`);
+  }
+
   if (hasDetCritical) gateReasons.push("deterministic critical failure");
   if (hasJudgeCritical) gateReasons.push("adversarial critical failure");
   // Judge absence is a phase status ("degraded"), not a gate failure — it must
