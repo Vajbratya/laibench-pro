@@ -1,5 +1,29 @@
 # Changelog
 
+## v3.5.0 — LAIBench Pro — clause-scoped negation in the critical-mention filter (affects scores)
+
+CLI contract and run-artifact JSON schema remain backward compatible. This
+changes CRIT gating on affected cases (both locales), so `benchmarkVersion`
+moves to `3.5.0` and `scoringHash` updates.
+
+### Fixed (correctness — affects scores, safety direction both ways)
+- **`extractCriticalMentions` filtered negations at the sentence level and missed
+  bare pt-BR pertinent negatives.** It used `isNegated`, which consults only the
+  locale `negationPatterns`; pt-BR lacked bare cues (`sem`, `ausentes`, `livres
+  de`), while en-US had `without`/`absent`. So a clinically correct pt-BR
+  pertinent negative (`Sem hemorragia`, `Sem fratura`) was not filtered and, on
+  the no-gold-critical hallucination path, surfaced as an unexpected critical
+  mention that force-FAILed the case. The filter now uses the clause-scoped
+  `isFindingNegated` on the matched critical term (the predicate the gold path
+  and QUAL channel already use), which (a) closes the pt-BR pertinent-negative
+  escape and (b) no longer suppresses an affirmed critical that shares a sentence
+  with a negated one (`sem desvio da linha média, mas com hematoma subdural
+  agudo` now correctly surfaces the hematoma in both locales, instead of the
+  whole sentence being dropped). A negated match falls through to the next
+  category so a second affirmed critical in the same sentence is still detected.
+  Locked by `src/negation.test.ts` (pt-BR/en-US pertinent negatives filtered;
+  mixed sentences still detect the affirmed critical in both locales).
+
 ## v3.4.0 — LAIBench Pro — confirmed findings with recommendations are no longer dropped (affects scores)
 
 CLI contract and run-artifact JSON schema remain backward compatible. This

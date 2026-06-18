@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { hasNegationCue, isFindingNegated } from "./extract.js";
+import { hasNegationCue, isFindingNegated, extractCriticalMentions } from "./extract.js";
 import { getDefaultCriticalExtractor } from "./extractors/critical-extractor.js";
 import { deriveExamMeta } from "./classify.js";
 import { runStructuralChecks } from "./evaluators/structural.js";
@@ -82,5 +82,32 @@ describe("R02 laterality: negated contralateral side is not a swap", () => {
     const r02 = checks.find((c) => c.id === "R02");
     assert.equal(r02!.passed, false);
     assert.match(String(r02!.evidence), /SWAP/);
+  });
+});
+
+describe("extractCriticalMentions clause-scoped negation", () => {
+  it("filters pt-BR bare pertinent negatives (Sem hemorragia / Sem fratura)", () => {
+    const m = extractCriticalMentions("<b>Achados</b><br>Parenquima cerebral sem hemorragia ou efeito de massa. Sem hematoma.", "pt-BR");
+    assert.equal(m.length, 0, JSON.stringify(m));
+  });
+
+  it("filters en-US bare pertinent negatives (without hemorrhage)", () => {
+    const m = extractCriticalMentions("<b>Findings</b><br>Brain parenchyma without hemorrhage or mass effect.", "en-US");
+    assert.equal(m.length, 0, JSON.stringify(m));
+  });
+
+  it("still detects an affirmed critical sharing a sentence with a negated one (pt-BR, no over-suppression)", () => {
+    const m = extractCriticalMentions("<b>Achados</b><br>Sem desvio da linha media, mas com hematoma subdural agudo.", "pt-BR");
+    assert.equal(m.some((x) => x.category === "acute-bleed"), true, JSON.stringify(m));
+  });
+
+  it("still detects an affirmed critical sharing a sentence with a negated one (en-US, no over-suppression)", () => {
+    const m = extractCriticalMentions("<b>Findings</b><br>No midline shift, but with acute hemorrhage.", "en-US");
+    assert.equal(m.some((x) => x.category === "acute-bleed"), true, JSON.stringify(m));
+  });
+
+  it("detects a plainly affirmed critical (detection not over-suppressed)", () => {
+    const m = extractCriticalMentions("<b>Achados</b><br>Hematoma subdural agudo.", "pt-BR");
+    assert.equal(m.some((x) => x.category === "acute-bleed"), true, JSON.stringify(m));
   });
 });

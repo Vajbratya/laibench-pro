@@ -470,17 +470,23 @@ export function extractCriticalMentions(html: string, locale?: LocaleKey): Extra
   for (const sentence of sentences) {
     for (const cat of CRITICAL_CATEGORIES) {
       const rx = effectiveLocale === "en-US" ? cat.rxEn : cat.rxPt;
-      if (rx.test(sentence)) {
-        // BUG 1 FIX: Skip negated mentions - "no evidence of PE" should NOT count as PE detected
-        if (isNegated(sentence, effectiveLocale)) {
-          break; // negated, skip this sentence entirely
-        }
-        results.push({
-          text: sentence,
-          category: cat.category,
-        });
-        break; // one category per sentence
-      }
+      const match = rx.exec(sentence);
+      if (!match) continue;
+      // Clause-scoped negation. Skip only when the matched critical term itself
+      // is negated within its clause, using the same predicate the gold path and
+      // QUAL channel use. This (a) closes the pt-BR gap where bare pertinent
+      // negatives ("Sem hemorragia", "Sem fratura") were not filtered and
+      // force-FAILed correct reports, and (b) avoids suppressing an affirmed
+      // critical that shares a sentence with a negated one ("sem desvio da linha
+      // media, mas com hematoma subdural agudo"). A negated match falls through
+      // to the next category so a second, affirmed critical in the same sentence
+      // is still detected.
+      if (isFindingNegated(sentence, match[0], effectiveLocale)) continue;
+      results.push({
+        text: sentence,
+        category: cat.category,
+      });
+      break; // one affirmed category per sentence
     }
   }
 
