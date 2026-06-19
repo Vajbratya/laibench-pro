@@ -1,6 +1,6 @@
 {
   "name": "laibench-pro",
-  "version": "3.9.0",
+  "version": "3.10.0",
   "license": "MIT",
   "type": "module",
   "description": "LAIBench Pro: CLI-first reference benchmark and leaderboard harness for radiology finding-to-report generation.",

@@ -34,7 +34,7 @@ test("stratify-run-comparison assigns each failed check to one primary stratum",
     { dim: "GUIDE", id: "G01", name: "Anatomical coverage: mediastino", severity: "major", passed: false, evidence: "missing: mediastino" },
     { dim: "GUIDE", id: "GE-fleischner-presence", name: "Fleischner classification present", severity: "major", passed: false, evidence: "Fleischner not mentioned" },
     { dim: "QUAL", id: "QG07", name: "Report synthesizes findings beyond input copy", severity: "major", passed: false, evidence: "copiedOutputRatio=80%" },
-    { dim: "RAG", id: "R04", name: "No unsupported acquisition details", severity: "major", passed: false, evidence: "slice thickness" },
+    { dim: "RAG", id: "R-ACQ", name: "No unsupported acquisition details", severity: "major", passed: false, evidence: "slice thickness" },
     { dim: "TERM", id: "T12", name: "intravenoso->endovenoso", severity: "major", passed: false, evidence: "intravenoso" },
   ])));
 

@@ -1,5 +1,53 @@
 # Changelog
 
+## v3.10.0 — LAIBench Pro — judge-parse anti-inflation, gate completeness, critical-keyword coverage (affects scores)
+
+Second hardening pass over the medium-severity audit tail (prime-directive-relevant
+items). CLI contract and run-artifact JSON schema remain backward compatible.
+Scoring math changes, so `benchmarkVersion` moves to `3.10.0` and `scoringHash`
+updates.
+
+### Fixed (correctness — affects scores, safety direction)
+- **Judge parser re-introduced per-value scale inflation.** `parseJudgeResponse`
+  floored scores at 1 and routed any dim ≤ 5 through a per-value Likert path —
+  the exact failure mode `scoring.ts` rejected in favor of a single per-result
+  `judgeScoresAreLikert` decision. The parser now preserves the judge's raw
+  `[0,100]` values (a genuine 0 stays 0) and lets `combineScores` own all scale
+  disambiguation.
+- **Out-of-range judge values were clamped to the favorable end** (CRIT=500 → 100).
+  Clearly out-of-range values are now dropped to `null` (invalid) instead of
+  becoming a maximum score.
+- **Judge silently dropped on trailing prose.** The JSON extractor was end-anchored
+  (`/\{[\s\S]*\}$/`), so any text after the object (even a trailing period) made
+  parsing return null. It now scans from the first `{` to its matching `}` by
+  brace depth (string-aware), tolerant of leading/trailing prose, and logs a
+  warning when a present response is unparseable instead of dropping it silently.
+- **Form/coverage alone could reach PASS when both clinical dims were UNSCORED.**
+  The anti-compensation cap treated a `null` CRIT/QUAL as "not weak". PASS now
+  requires at least one scored clinical dimension; if both are UNSCORED the score
+  is capped below PASS with an explicit gate reason.
+- **`CRITICAL_KEYWORDS_PT/EN` reconciled with `CRITICAL_CATEGORIES`.** Added
+  keyword anchors (both locales) for classic emergencies that were defined as
+  categories but not anchored — cauda equina, pneumoperitoneum/free air,
+  testicular/ovarian torsion, mesenteric/intestinal ischemia, spinal cord
+  compression, intussusception, necrotizing fasciitis, appendicitis, bowel
+  obstruction, perforation, ectopic pregnancy, extravasation. Additive,
+  safe-direction (more criticals recognized as gated anchors).
+
+### Fixed (hygiene)
+- Duplicate check id `R04` in the RAG structural-fallback path renamed to a
+  unique id.
+- The `--cmd` command provider no longer hands the benchmark's own provider/judge
+  credentials (`OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `OPENAI_COMPAT_API_KEY`,
+  `ANTHROPIC_API_KEY`, `LANGFUSE_*`, and the `LAIBENCH_` credential namespace) to
+  the evaluated subprocess. Uses a narrow exact-name denylist so the evaluated
+  agent's OWN credentials are preserved (backward compatible).
+
+### Docs
+- Methods doc now states explicitly that LAIBench has no prose/aesthetic axis and
+  that the only discourse-adjacent signals (hedging, verbosity) are minor,
+  non-gating, and apply only on the no-gold fallback path.
+
 ## v3.9.0 — LAIBench Pro — prime-directive hardening: gate enforced on public numbers, polarity-aware critical detection, provenance & disclosure integrity (affects scores)
 
 Outcome of an exhaustive pre-publish audit (9 review dimensions, every finding
