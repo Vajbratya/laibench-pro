@@ -48,17 +48,68 @@ function criticalSourceText(benchCase: BenchCase): string {
   ].join("\n"));
 }
 
-function isSourceBackedCriticalMention(text: string, benchCase: BenchCase): boolean {
-  const sourceText = criticalSourceText(benchCase);
-  return sourceText.length > 0 && clinicalTokenCoverage(text, sourceText) >= 0.55;
+/** Source split into clauses for polarity-aware best-clause matching. */
+function criticalSourceClauses(benchCase: BenchCase): string[] {
+  return criticalSourceText(benchCase)
+    .replace(/<br\s*\/?>/gi, "\n")
+    .split(/[.\n;]/)
+    .map((clause) => clause.trim())
+    .filter((clause) => clause.length > 0);
+}
+
+/**
+ * crit-extract-1 / CG05: source-backing must be polarity-aware. The lexical
+ * coverage that gates suppression (clinicalTokenCoverage) strips negation tokens
+ * as stopwords, so a critical the SOURCE only ever stated as a pertinent NEGATIVE
+ * ("No tension pneumothorax") would lexically "cover" a report that FABRICATES it
+ * as present ("tension pneumothorax present") and wrongly suppress the fabricated
+ * critical. We therefore suppress a report mention as source-backed ONLY when the
+ * best-matching source clause AFFIRMS the same critical. If the best-matching
+ * source clause NEGATED the critical, the report's affirmation is unsupported and
+ * must NOT be suppressed (it counts as a fabricated critical).
+ */
+function isSourceBackedCriticalMention(text: string, benchCase: BenchCase, locale: LocaleKey): boolean {
+  const clauses = criticalSourceClauses(benchCase);
+  if (clauses.length === 0) return false;
+
+  // Best-matching source clause by lexical coverage of the report mention.
+  let bestClause = "";
+  let bestCoverage = 0;
+  for (const clause of clauses) {
+    const coverage = clinicalTokenCoverage(text, clause);
+    if (coverage > bestCoverage) {
+      bestCoverage = coverage;
+      bestClause = clause;
+    }
+  }
+  if (bestCoverage < 0.55) return false;
+
+  // Polarity gate: the report mention is an AFFIRMED critical (it came from
+  // extractCriticalMentions, which already filters clause-negated mentions). It
+  // is genuinely source-backed only if the matched source clause likewise
+  // AFFIRMS that critical. Anchor on the critical term(s) shared with the report
+  // mention; if any such anchor is negated in the source clause, the source did
+  // NOT affirm it, so do not suppress.
+  const anchorRx = locale === "en-US" ? CRITICAL_KEYWORDS_EN : CRITICAL_KEYWORDS_PT;
+  const anchors = text.match(new RegExp(anchorRx.source, "gi")) ?? [];
+  if (anchors.length === 0) {
+    // No recognized critical anchor in the report mention to polarity-check on;
+    // fall back to a whole-clause cue so an outright negated source clause still
+    // blocks suppression.
+    return !hasNegationCue(bestClause, locale);
+  }
+  // Suppress only if at least one shared critical anchor is AFFIRMED in the
+  // matched source clause (i.e. the source genuinely backs the critical).
+  return anchors.some((anchor) => bestClause.toLowerCase().includes(anchor.toLowerCase()) && !isFindingNegated(bestClause, anchor, locale));
 }
 
 function withSourceBackedFalsePositivesRemoved(
   result: ReturnType<typeof matchCriticalFindings>,
   benchCase: BenchCase,
+  locale: LocaleKey,
 ) {
-  const falsePositives = result.falsePositives.filter((fp) => !isSourceBackedCriticalMention(fp.text, benchCase));
-  const excludedFalsePositives = result.falsePositives.filter((fp) => isSourceBackedCriticalMention(fp.text, benchCase));
+  const falsePositives = result.falsePositives.filter((fp) => !isSourceBackedCriticalMention(fp.text, benchCase, locale));
+  const excludedFalsePositives = result.falsePositives.filter((fp) => isSourceBackedCriticalMention(fp.text, benchCase, locale));
   const tp = result.truePositives.length;
   const fn = result.falseNegatives.length;
   const fp = falsePositives.length;
@@ -93,6 +144,7 @@ export function evaluateCritical(
     const result = withSourceBackedFalsePositivesRemoved(
       matchCriticalFindings(criticalLabels, reportHtml, locale),
       benchCase,
+      locale,
     );
     details.mode = "gold-critical";
     details.source = explicitCriticalFindings.length > 0 ? "criticalFindings" : "goldFindings";
@@ -153,9 +205,9 @@ export function evaluateCritical(
 
   if ((benchCase.goldFindings?.length ?? 0) > 0) {
     const sourceBackedCriticalMentions = extractCriticalMentions(reportHtml, locale)
-      .filter((fp) => isSourceBackedCriticalMention(fp.text, benchCase));
+      .filter((fp) => isSourceBackedCriticalMention(fp.text, benchCase, locale));
     const unexpectedCriticalMentions = extractCriticalMentions(reportHtml, locale)
-      .filter((fp) => !isSourceBackedCriticalMention(fp.text, benchCase));
+      .filter((fp) => !isSourceBackedCriticalMention(fp.text, benchCase, locale));
     details.mode = "gold-critical-none";
     details.source = "goldFindings";
     details.falsePositives = unexpectedCriticalMentions.map((fp) => fp.text);

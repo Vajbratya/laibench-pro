@@ -529,6 +529,22 @@ export function evaluateGuidelines(
             ? `found=${result.foundClassification} expected=${expectation.expectedClassification}`
             : `found=${result.foundClassification ?? "none"} expected=${expectation.expectedClassification}`,
         });
+      } else if (expectation.expectedClassification && result.present && !result.foundClassification) {
+        // qual-structural-guide-rag-1: the report named the guideline acronym
+        // (present=true) but supplied NO actionable category, so the module left
+        // result.correct null and no foundClassification. The presence check
+        // above would otherwise award credit while the correctness gate is
+        // silently dodged — a present-without-value report leaking free points.
+        // An expected category that is never actually stated is a critical miss,
+        // not a partial credit, so emit the correctness check as a hard FAIL.
+        checks.push({
+          dim: "GUIDE",
+          id: `GE-${module.id}-correct`,
+          name: `${module.name}: classification correct`,
+          severity: "critical",
+          passed: false,
+          evidence: `guideline named but no actionable category supplied; expected=${expectation.expectedClassification}`,
+        });
       }
 
       // Check 3: Recommendation present (if required)

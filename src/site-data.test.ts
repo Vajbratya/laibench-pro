@@ -62,7 +62,7 @@ describe("leaderboard site data segregation (conflict-of-interest)", () => {
     assert.deepEqual(ordered.map((e) => e.system), ["B", "A"]);
   });
 
-  it("disclosure states first-party, diagnostic-only, synthetic and radiologist-reviewed provenance", () => {
+  it("disclosure states first-party, diagnostic-only and synthetic provenance", () => {
     const d = LEADERBOARD_DISCLOSURE.toLowerCase();
     assert.match(d, /first-party/);
     assert.match(d, /diagnostic/);
@@ -70,5 +70,29 @@ describe("leaderboard site data segregation (conflict-of-interest)", () => {
     assert.match(d, /synthetic/);
     assert.match(d, /radiologists in sao paulo/);
     assert.match(d, /aggregate-only/);
+  });
+
+  it("does NOT overclaim clinical review of the public demonstration cases", () => {
+    // README.md and DATA_ACCESS_POLICY.md both state that the public demo cases
+    // are synthetic and INPUT-ONLY, and that the senior-radiologist review applies
+    // to the CONTROLLED pt-BR suite as an internal data-quality process. The
+    // disclosure must match that and must never claim the public demo cases were
+    // clinically reviewed (the prior wording did, contradicting the docs).
+    const d = LEADERBOARD_DISCLOSURE.toLowerCase();
+    // Public demonstration cases are scoped as synthetic + input-only and NOT reviewed.
+    assert.match(d, /public demonstration cases are synthetic and input-only/);
+    assert.match(d, /not clinically reviewed/);
+    // The overclaim string must be gone: the public demo cases must not be said to
+    // have been "authored and clinically reviewed".
+    assert.doesNotMatch(d, /public demonstration cases are synthetic and were authored and\s+clinically reviewed/);
+  });
+
+  it("scopes senior-radiologist review to the controlled suite as an internal, non-third-party process", () => {
+    const d = LEADERBOARD_DISCLOSURE.toLowerCase();
+    // Radiologist review is attributed to the controlled pt-BR suite, not the public cases.
+    assert.match(d, /controlled pt-br suite is synthetic and was authored and reviewed by senior\s+radiologists in sao paulo/);
+    // Explicitly framed as internal data-quality, NOT independent third-party validation.
+    assert.match(d, /internal data-quality process/);
+    assert.match(d, /not an independent third-party validation/);
   });
 });

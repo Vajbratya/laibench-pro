@@ -25,6 +25,8 @@ jobs:
         run: npm test
       - name: Private release guard
         run: npm run guard:private
+      - name: Public release guard
+        run: npm run guard:public
       - name: Smoke — mock-agent suite run
         run: npm run smoke:mock
       - name: Smoke — leaderboard

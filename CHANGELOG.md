@@ -1,5 +1,84 @@
 # Changelog
 
+## v3.9.0 — LAIBench Pro — prime-directive hardening: gate enforced on public numbers, polarity-aware critical detection, provenance & disclosure integrity (affects scores)
+
+Outcome of an exhaustive pre-publish audit (9 review dimensions, every finding
+adversarially verified). The core anti-HealthBench design held — conservative
+`MIN(det, judge)`, the hard critical veto (`cap 59.9` + forced `FAIL`), the
+absence of any prose/aesthetic axis, and the anti-compensation invariant were
+all confirmed sound and no path was found where a high judge/QUAL score rescues
+a missed or fabricated critical *through the normal `combineScores` gate*. The
+fixes below close escapes *around* that gate (the layers that produce public
+numbers, and negation/polarity edge cases) plus provenance/disclosure integrity.
+CLI contract and run-artifact JSON schema remain backward compatible (additive
+fields and stricter integrity validation only). Scoring math changes, so
+`benchmarkVersion` moves to `3.9.0` and `scoringHash` updates.
+
+### Fixed (correctness — affects scores, safety direction)
+- **The critical gate was not re-enforced where public numbers are produced.**
+  `assertSuiteRunIntegrity` recomputed `combinedOverall` but never re-derived the
+  per-case `verdict`, and `recomputeSummary` trusted the stored verdict — so a
+  run with a critical-miss case (honest `59.9`/`FAIL`) relabeled `PASS` passed
+  integrity and inflated `passRate`/`strictPassRate`. The integrity check now
+  (a) re-derives the verdict through the gated combiner and rejects any stored
+  verdict that disagrees, (b) enforces an **absolute, policy-independent critical
+  veto** (a failed `severity:"critical"` check or a judge `critical_failure`
+  forces `FAIL` under every policy/scoreMode, even when `detDims` is absent), and
+  (c) drives the summary tallies from the re-derived verdict. Absent/partial
+  `detDims` on a public-facing artifact is now an integrity failure (no more
+  validating against an ungated weighted mean). `report.ts` now routes inputs
+  through `assertSuiteRunIntegrity`; `reliability.ts` `isCriticalSafe` now also
+  fails on any failed critical check.
+- **Bare pertinent negatives ("no X" / "sem X") were invisible in the token-match
+  path.** `isFindingNegated`'s fallback delegated to `isNegated`, whose locale
+  patterns omit bare prefixes, so a report that *denied* a critical could be
+  credited as mentioning it. The fallback now uses the clause-scoped
+  `hasNegationCue` (`NEGATION_PREFIX/SUFFIX`).
+- **Negation bled across conjunctions.** Clause windows used only `, ; :` as
+  boundaries. Added true contrast/accompaniment markers
+  (`but|with|mas|com|porém|contudo|entretanto`) so a leading negation no longer
+  un-gates an affirmed compound critical. Coordinating conjunctions
+  (`and|or|e|ou`) are deliberately **not** boundaries — in radiology they share a
+  negation ("no hemorrhage or mass effect"), and closing scope there would
+  fabricate a critical.
+- **Source-backed critical suppression was polarity-blind (CG05).** A critical
+  the *source negated* (pertinent negative) but the *report fabricated as present*
+  was suppressed via lexical token coverage and scored 100. `isSourceBackedCriticalMention`
+  is now polarity-aware: a mention is source-backed only when the best-matching
+  source clause *affirms* the same critical anchor.
+- **QUAL polarity inversion on compound gold.** `polarityConcordant` computed
+  `goldNegated` with whole-text `hasNegationCue`, so a gold like "acute subdural
+  hematoma, no midline shift" was flagged negated, letting a report that negated
+  the critical match. `goldNegated` (and the candidate side) are now scoped to the
+  gold's primary finding clause.
+- **Judge-primary could overwrite the deterministic clinical floor.** In
+  `judge-primary` mode the clinical dims (`CRIT`, `QUAL`) are now clamped to
+  `MIN(det, judge)` so a high judge score cannot lift a deterministic clinical
+  failure in the reported per-dimension columns. Non-clinical dims keep
+  judge-primary behavior (backward compatible).
+- **GUIDE present-without-value leaked points.** When a guideline acronym is named
+  with no actionable category, the correctness gate is now emitted as a critical
+  `FAIL` instead of being skipped.
+
+### Fixed (provenance & release integrity)
+- **`DEFAULT_SCORING_FILES` omitted gate-deciding files.** Added
+  `clinical-match.ts`, `extractors/critical-extractor.ts`, and the locale spec
+  files (`locales/index.ts`, `types.ts`, `en-US.ts`, `pt-BR.ts`) so silent
+  tampering of the critical-finding gate moves `scoringHash`. Added an import-graph
+  coverage test that fails if a runtime module reachable from the scoring path is
+  not pinned.
+- **Public disclosure overclaim corrected.** The public leaderboard disclosure
+  stated the *public demonstration cases* were "clinically reviewed by senior
+  radiologists" — contradicting the README/DATA_ACCESS_POLICY and unsupported by
+  any adjudication artifact. Reworded to the truthful, consistent scope: the
+  public demo cases are synthetic and input-only; senior-radiologist review
+  (São Paulo, Brazil) applies to the *controlled pt-BR suite* as an internal
+  data-quality process, **not** an independent third-party validation.
+- **`guard:public` now enforces the radiologist/adjudication claim gate.** A
+  public artifact asserting clinical validation/independent review of scored
+  cases fails the guard unless a `validateAdjudicationRecord` artifact matches the
+  published `suiteHash`. CI now runs `guard:public` (was `guard:private` only).
+
 ## v3.8.0 — LAIBench Pro — clause-scoped negation in the gold-critical gate (affects scores)
 
 CLI contract and run-artifact JSON schema remain backward compatible (the

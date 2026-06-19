@@ -12,11 +12,14 @@ export const LEADERBOARD_DISCLOSURE =
   "built by the same team that maintains LAIBench Pro. Free and open model rows " +
   "are diagnostic comparisons only and are never ranked against the first-party " +
   "production agent. Calibration fixtures are harness sanity checks, not product " +
-  "claims. Public demonstration cases are synthetic and were authored and " +
-  "clinically reviewed by senior radiologists in Sao Paulo, SP, Brazil; the " +
-  "controlled pt-BR suite is aggregate-only and is not an open-download " +
-  "benchmark. Independent third-party adjudication (vendor-versus-external " +
-  "inter-rater kappa) is tracked as future work and is not claimed here.";
+  "claims. The public demonstration cases are synthetic and input-only; they were " +
+  "not clinically reviewed and must not be used to claim clinical validation. The " +
+  "controlled pt-BR suite is synthetic and was authored and reviewed by senior " +
+  "radiologists in Sao Paulo, SP, Brazil as an internal data-quality process; this " +
+  "is not an independent third-party validation, and the suite is aggregate-only " +
+  "and is not an open-download benchmark. Independent external adjudication " +
+  "(vendor-versus-external inter-rater kappa) is tracked as future work and is not " +
+  "claimed here.";
 
 export function criterionStats(run) {
   const results = Array.isArray(run.results) ? run.results : [];

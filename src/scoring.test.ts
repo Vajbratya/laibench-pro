@@ -255,10 +255,15 @@ describe("combineScores", () => {
       fix: "",
     };
     const result = combineScores(detDims, judge, [], undefined, "judge-primary");
-    assert.equal(result.combined.CRIT, 92);
-    assert.equal(result.overall, 83.9);
+    // judge-1 fix: clinical dims (CRIT/QUAL) are clamped to the deterministic
+    // floor even in judge-primary mode, so the judge's CRIT=92/QUAL=88 cannot
+    // overwrite the deterministic 62/FAIL. Non-clinical dims keep judge-primary
+    // values (TERM=95, GUIDE=84, RAG=90).
+    assert.equal(result.combined.CRIT, 62, "clinical CRIT clamped to det floor, not lifted by judge");
+    assert.equal(result.combined.QUAL, 62, "clinical QUAL clamped to det floor, not lifted by judge");
+    assert.equal(result.combined.TERM, 95, "non-clinical TERM keeps judge-primary value");
+    assert.equal(result.overall, 74.7);
     assert.equal(result.verdict, "PARTIAL");
-    assert.ok(result.gateReasons.includes("severity cap: deterministic dimension failure"));
     assert.ok(result.overall < 84);
     assert.equal(result.phaseStatus, "complete");
   });
@@ -279,8 +284,13 @@ describe("combineScores", () => {
       fix: "",
     };
     const result = combineScores(detDims, judge, [], undefined, "judge-primary");
-    assert.equal(result.combined.CRIT, 92);
-    assert.equal(result.overall, 90.2);
+    // judge-1 fix: clinical dims (CRIT/QUAL) clamp to the deterministic floor
+    // (84) — the judge cannot push them above what determinism supports — while
+    // non-clinical dims keep judge-primary values. The case still PASSES.
+    assert.equal(result.combined.CRIT, 84, "clinical CRIT clamped to det floor 84");
+    assert.equal(result.combined.QUAL, 84, "clinical QUAL clamped to det floor 84");
+    assert.equal(result.combined.TERM, 95, "non-clinical TERM keeps judge-primary value");
+    assert.equal(result.overall, 86.8);
     assert.equal(result.verdict, "PASS");
     assert.equal(result.phaseStatus, "complete");
   });
@@ -304,6 +314,39 @@ describe("combineScores", () => {
     assert.equal(result.overall, 59.9);
     assert.equal(result.verdict, "FAIL");
     assert.ok(result.gateReasons.includes("deterministic critical failure"));
+  });
+
+  // judge-1: in judge-primary mode the RAW judge score used to overwrite the
+  // deterministic clinical dimension, so a judge CRIT=100 buried a deterministic
+  // CRIT=40/FAIL on the per-dimension leaderboard column. The clinical dims must
+  // be clamped to the deterministic floor even in judge-primary mode.
+  it("clamps clinical CRIT/QUAL to the deterministic floor in judge-primary mode (judge cannot bury a det FAIL)", () => {
+    const detDims = {} as Record<Dim, DimSummary>;
+    for (const dim of DIMS) {
+      detDims[dim] = { score: 90, pass: 9, total: 10, critFails: 0, verdict: "PASS", appliedWeight: WEIGHTS[dim] };
+    }
+    // Deterministic CRIT is a hard FAIL at 40; deterministic QUAL is a weak 55.
+    detDims.CRIT = { score: 40, pass: 4, total: 10, critFails: 1, verdict: "FAIL", appliedWeight: WEIGHTS.CRIT };
+    detDims.QUAL = { score: 55, pass: 5, total: 10, critFails: 0, verdict: "FAIL", appliedWeight: WEIGHTS.QUAL };
+    const judge = {
+      verdict: "PASS" as const,
+      // Judge tries to rescue the clinical dims to a perfect 100.
+      scores: { CRIT: 100, QUAL: 100, TERM: 100, GUIDE: 100, RAG: 100 } as Partial<Record<Dim, number>>,
+      overall: 100,
+      critical_failures: [],
+      missing: [],
+      hallucinated: [],
+      spot_checks: [],
+      fix: "",
+    };
+    const result = combineScores(detDims, judge, [], undefined, "judge-primary");
+    // Escape closed: clinical dims clamped to det floor, NOT the raw judge 100.
+    assert.equal(result.combined.CRIT, 40, "CRIT must clamp to det floor 40, never the judge's 100");
+    assert.equal(result.combined.QUAL, 55, "QUAL must clamp to det floor 55, never the judge's 100");
+    // Backward compat: non-clinical dims still take the judge-primary value.
+    assert.equal(result.combined.TERM, 100, "TERM keeps judge-primary value (backward compat)");
+    assert.equal(result.combined.GUIDE, 100, "GUIDE keeps judge-primary value (backward compat)");
+    assert.equal(result.combined.RAG, 100, "RAG keeps judge-primary value (backward compat)");
   });
 
   it("caps multiple major failures below PASS band using severe-failure weight", () => {
@@ -778,6 +821,37 @@ describe("evaluateGuidelines", () => {
     assert.equal(presence?.passed, false, "reference BI-RADS expectation should be enforced");
   });
 
+  // qual-structural-guide-rag-1: naming the guideline acronym WITHOUT supplying
+  // an actionable category ("classificação BI-RADS" with no number) used to leak
+  // free points — presence passed and the correctness gate was silently dodged
+  // because the module left result.correct null. A present-without-value report
+  // must FAIL the correctness check, not pass silently.
+  it("fails GE-correct when the guideline is named but no actionable category is supplied (present-without-value)", () => {
+    const benchCase = makeCase({
+      exam: "MMG MAMOGRAFIA BILATERAL",
+      findings: "Nódulo irregular espiculado na mama direita.",
+      locale: "pt-BR",
+      guidelineExpectations: [
+        { guidelineId: "birads", expectedClassification: "BI-RADS 4" },
+      ],
+    });
+    const meta = makeMeta({ modality: "MG", region: "breast" });
+    // The acronym is named but NO category/number is given.
+    const html = "<b>Achados</b><br>Nódulo irregular espiculado na mama direita.<br><b>Conclusão</b><br>Recomenda-se classificação BI-RADS para o nódulo descrito.";
+
+    const result = evaluateGuidelines(html, benchCase, "pt-BR", meta, []);
+    const presence = result.checks.find((c) => c.id === "GE-birads-presence");
+    const correct = result.checks.find((c) => c.id === "GE-birads-correct");
+
+    // Presence may register (the acronym is named)...
+    assert.equal(presence?.passed, true, "acronym is named so presence registers");
+    // ...but the correctness gate must NOT be silently skipped — it must FAIL.
+    assert.ok(correct, "GE-birads-correct must be emitted, not silently skipped");
+    assert.equal(correct!.passed, false, "naming BI-RADS without a value must fail correctness");
+    assert.equal(correct!.severity, "critical", "missing actionable category is a critical miss");
+    assert.match(correct!.evidence, /no actionable category/i);
+  });
+
   it("falls back to anatomy coverage when no guidelines apply", () => {
     const benchCase = makeCase({
       exam: "ct head non-contrast",
@@ -1054,6 +1128,79 @@ describe("evaluateQuality", () => {
 
     assert.equal(qg01?.passed, true, qg01?.evidence);
     assert.equal(qg06?.passed, true, qg06?.evidence);
+  });
+
+  // negation-matching-2: an affirmed compound critical gold that embeds an
+  // unrelated pertinent negative ("acute subdural hematoma, no midline shift")
+  // must keep gold polarity = AFFIRMED. The OLD whole-text hasNegationCue on the
+  // gold finding wrongly set goldNegated=true (because of "no midline shift"),
+  // which let a report that NEGATES the critical concord/match it — a dangerous
+  // negation slipping through as a detected critical. With clause-scoped gold
+  // polarity, a report negating the critical is now correctly a MISS (QG02 fails).
+  it("does not let a report negating a compound affirmed critical match it (embedded pertinent negative)", () => {
+    const benchCase = makeCase({
+      findings: "Acute subdural hematoma along the left convexity, no midline shift.",
+      goldFindings: [
+        { finding: "acute subdural hematoma, no midline shift", severity: "critical" },
+      ],
+    });
+    const meta = makeMeta({ modality: "CT", region: "head", abnormalStudy: true });
+    // Report DENIES the critical.
+    const html = "<b>Findings</b><br>No acute subdural hematoma. No midline shift.<br><b>Impression</b><br>No acute intracranial abnormality.";
+
+    const result = evaluateQuality(html, benchCase, "en-US", meta, []);
+    const qg02 = result.checks.find((c) => c.id === "QG02");
+    assert.ok(qg02, "QG02 must be emitted: a critical was missed (negated by the report)");
+    assert.equal(qg02!.passed, false, JSON.stringify(result.details.findingMatches));
+    assert.equal(result.score, 0, "negating an affirmed critical must floor QUAL to 0");
+  });
+
+  // qual-compound-polarity (re-verify, OPEN -> closed): the embedded-pertinent-
+  // negative fix to polarityConcordant was necessary but NOT sufficient. The
+  // residual escape was upstream in matchFindings: when the compound gold's
+  // negative tokens ("...no midline shift") diluted the FULL-gold token ratio
+  // below 0.5, bestSentenceForTokens returned null and the code fell back to
+  // `?? gold.finding`, so polarityConcordant compared the affirmed gold to
+  // ITSELF and a NEGATING report was scored as a concordant exact match. This
+  // report omits "acute" and scatters the negatives across sentences so that no
+  // single sentence clears 0.5 on the full gold tokens. reportPolarityCandidate
+  // now scopes selection to the gold's PRIMARY-clause tokens (so "No subdural
+  // hematoma" -> 0.667) and never falls back to the gold text.
+  it("catches a multi-sentence negation that diluted the full-gold token ratio below threshold (no gold-text fallback)", () => {
+    const benchCase = makeCase({
+      findings: "Acute subdural hematoma along the left convexity, no midline shift.",
+      goldFindings: [
+        { finding: "acute subdural hematoma, no midline shift", severity: "critical" },
+      ],
+    });
+    const meta = makeMeta({ modality: "CT", region: "head", abnormalStudy: true });
+    // Report DENIES the critical, WITHOUT the word "acute", negatives split across
+    // sentences -> full-gold token ratio in any single sentence is < 0.5 (the old
+    // null -> `?? gold.finding` fallback path).
+    const html = "<b>Findings</b><br>No subdural hematoma; no midline shift.<br><b>Impression</b><br>No acute intracranial abnormality.";
+
+    const result = evaluateQuality(html, benchCase, "en-US", meta, []);
+    const qg02 = result.checks.find((c) => c.id === "QG02");
+    assert.ok(qg02, "QG02 must be emitted: the affirmed critical was denied by the report");
+    assert.equal(qg02!.passed, false, JSON.stringify(result.details.findingMatches));
+    assert.equal(result.score, 0, "a report denying the affirmed critical must floor QUAL to 0, not score a concordant match");
+  });
+
+  it("still treats a genuinely negated critical gold as negated (no opposite-direction regression)", () => {
+    // Gold whose PRIMARY clause is the negation: report must also negate to match.
+    const benchCase = makeCase({
+      findings: "No acute hemorrhage. Old lacunar infarcts.",
+      goldFindings: [
+        { finding: "No acute hemorrhage", severity: "critical", negated: true },
+      ],
+    });
+    const meta = makeMeta({ modality: "CT", region: "head" });
+    const html = "<b>Findings</b><br>No acute intracranial hemorrhage. Chronic lacunar infarcts.<br><b>Impression</b><br>No acute hemorrhage.";
+
+    const result = evaluateQuality(html, benchCase, "en-US", meta, []);
+    const matches = result.details.findingMatches as Array<{ matchType: string }>;
+    assert.ok(matches.length > 0, "the negated gold should still be scored as a finding match");
+    assert.ok(matches.every((m) => m.matchType !== "missed"), "report concordantly negates the gold -> not a miss");
   });
 });
 

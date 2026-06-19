@@ -3,7 +3,9 @@ import { readJsonFile, writeJsonFile, writeTextFile } from "./io.js";
 import { round1 } from "./normalize.js";
 import { combineScores, DIMS, WEIGHTS } from "./scoring.js";
 import { buildComparableKey } from "./manifests.js";
-import type { CaseDifficulty, CompareRow, DifficultyBreakdown, Dim, DimSummary, EntityType, Leaderboard, LeaderboardEntry, LeaderboardGroup, PublicSubmissionValidation, SubmissionValidation, SuiteRunResult, SuiteSummary, SystemType } from "./types.js";
+import type { CaseDifficulty, CompareRow, DifficultyBreakdown, Dim, DimSummary, EntityType, Leaderboard, LeaderboardEntry, LeaderboardGroup, PublicSubmissionValidation, SubmissionValidation, SuiteRunResult, SuiteSummary, SystemType, Verdict } from "./types.js";
+
+type ScoredVerdict = Exclude<Verdict, "UNSCORED">;
 
 const DIFFICULTY_ORDER: CaseDifficulty[] = ["easy", "medium", "hard"];
 
@@ -94,14 +96,80 @@ function hasDimSummaries(value: unknown): value is Record<Dim, DimSummary> {
   });
 }
 
-function recomputeCaseOverall(
+/**
+ * Matches scoring.ts: a deterministic critical-finding miss/fabrication is any
+ * failed check whose severity is 'critical'. This is the policy-independent
+ * hard veto — every registered policy sets criticalFailForces=true, so a
+ * failed critical check (or a judge critical_failure) MUST drive the verdict to
+ * FAIL no matter which policy or scoreMode produced the run.
+ */
+function hasDetCritical(checks: SuiteRunResult["results"][number]["checks"]): boolean {
+  return (checks ?? []).some((check) => !check.passed && check.severity === "critical");
+}
+
+function hasJudgeCritical(result: SuiteRunResult["results"][number]): boolean {
+  return (result.judge?.critical_failures?.length ?? 0) > 0;
+}
+
+type RecomputedCase = {
+  overall: number;
+  /** Re-derived verdict from the gated combiner, or undefined when detDims is absent. */
+  verdict: ScoredVerdict | undefined;
+  /** Set when the artifact cannot be re-verified through the real (gated) combiner. */
+  integrityError?: string;
+};
+
+/**
+ * Recompute a case's overall AND verdict through the REAL (gated) combiner.
+ *
+ * For any artifact that feeds PUBLIC numbers we REQUIRE full deterministic
+ * dimension summaries: without them we cannot run the real critical-finding
+ * gate, and validating combinedOverall against an UNGATED weighted mean would
+ * let a critical-miss case (capped to 59.9 by the gate) masquerade as a passing
+ * mean. So an absent/partial detDims is reported as an integrity error rather
+ * than silently trusted.
+ *
+ * The run's policy id is not persisted in the manifest, so we re-derive with the
+ * default policy (undefined) and the run's stored scoreMode. The default and
+ * "research"/"leaderboard" policies share the canonical weights/thresholds, so
+ * those runs re-derive their overall/verdict exactly. A non-default policy
+ * ("strict") may legitimately disagree on the PASS/PARTIAL boundary; that is why
+ * the verdict equality check below is bounded by an explicit critical-veto
+ * cross-check (which holds under every policy) rather than relying solely on the
+ * band comparison.
+ */
+function recomputeCaseResult(
   result: SuiteRunResult["results"][number],
   scoreMode: SuiteRunResult["manifest"]["scoreMode"],
-): number {
+): RecomputedCase {
   if (hasDimSummaries(result.detDims)) {
-    return combineScores(result.detDims, result.judge, result.checks ?? [], undefined, scoreMode).overall;
+    const combined = combineScores(result.detDims, result.judge, result.checks ?? [], undefined, scoreMode);
+    return { overall: combined.overall, verdict: combined.verdict };
   }
-  return recomputeCombinedOverall(result.combined);
+  return {
+    overall: recomputeCombinedOverall(result.combined),
+    verdict: undefined,
+    integrityError: "missing deterministic dimension summaries (cannot re-verify through the gated combiner)",
+  };
+}
+
+/**
+ * The verdict the summary tallies (passRate/strictPassRate/verdictCounts) must
+ * be driven from, in order of trust:
+ *   1. the RE-DERIVED gated verdict (when detDims is present), never the stored one;
+ *   2. failing that, an absolute critical veto: any failed critical check or judge
+ *      critical_failure forces FAIL regardless of the stored verdict.
+ * Only when neither signal is available do we fall back to the stored verdict —
+ * and {@link recomputeCaseResult} already flags that detDims-absent case as an
+ * integrity error, so a public artifact never reaches the fallback unflagged.
+ */
+function effectiveVerdict(
+  result: SuiteRunResult["results"][number],
+  reDerived: ScoredVerdict | undefined,
+): ScoredVerdict {
+  if (reDerived !== undefined) return reDerived;
+  if (hasDetCritical(result.checks) || hasJudgeCritical(result)) return "FAIL";
+  return result.verdict;
 }
 
 function recomputeSummary(run: SuiteRunResult): SuiteSummary {
@@ -119,10 +187,15 @@ function recomputeSummary(run: SuiteRunResult): SuiteSummary {
 
   for (const result of results) {
     const criteria = criterionStats(result.checks);
-    verdictCounts[result.verdict] += 1;
+    // Drive verdict tallies from the RE-DERIVED gated verdict, never the stored
+    // one: a tampered run that flips FAIL->PASS while leaving combinedOverall
+    // honest must not be able to inflate passRate/strictPassRate/verdictCounts.
+    const reDerived = recomputeCaseResult(result, run.manifest.scoreMode).verdict;
+    const verdict = effectiveVerdict(result, reDerived);
+    verdictCounts[verdict] += 1;
     averageOverall += result.combinedOverall;
-    if (result.verdict !== "FAIL") passRate += 1;
-    if (result.verdict === "PASS") strictPassRate += 1;
+    if (verdict !== "FAIL") passRate += 1;
+    if (verdict === "PASS") strictPassRate += 1;
     if (criteria.allPass) allPassCount += 1;
     criteriaPassed += criteria.criteriaPassed;
     criteriaTotal += criteria.criteriaTotal;
@@ -184,22 +257,42 @@ export function assertSuiteRunIntegrity(run: SuiteRunResult, label = "suite run"
   }
 
   run.results.forEach((result, index) => {
-    const expectedOverall = recomputeCaseOverall(result, run.manifest.scoreMode);
+    const caseId = result.case?.id ?? index;
+    const recomputed = recomputeCaseResult(result, run.manifest.scoreMode);
+    const expectedOverall = recomputed.overall;
     const expectedCriteria = criterionStats(result.checks);
+    // FIX 2: a public artifact that cannot be re-verified through the gated
+    // combiner (no/partial deterministic dimension summaries) is an integrity
+    // FAILURE — we refuse to validate combinedOverall against an ungated mean.
+    if (recomputed.integrityError) {
+      errors.push(`case ${caseId}: ${recomputed.integrityError}`);
+    }
     if (!closeEnough(result.combinedOverall, expectedOverall)) {
-      errors.push(`case ${result.case?.id ?? index} combinedOverall mismatch: expected ${expectedOverall}, got ${result.combinedOverall}`);
+      errors.push(`case ${caseId} combinedOverall mismatch: expected ${expectedOverall}, got ${result.combinedOverall}`);
+    }
+    // FIX 1: re-derive the verdict through the gated combiner and reject a run
+    // whose stored verdict disagrees. A tamper that flips FAIL->PASS while
+    // leaving combinedOverall honest (e.g. 59.9) is caught here.
+    if (recomputed.verdict !== undefined && result.verdict !== recomputed.verdict) {
+      errors.push(`case ${caseId} verdict mismatch: expected ${recomputed.verdict}, got ${result.verdict}`);
+    }
+    // FIX 1 (absolute, policy-independent veto): a failed critical check or a
+    // judge critical_failure MUST drive the verdict to FAIL. This holds under
+    // every policy/scoreMode, so it is enforced even when detDims is absent.
+    if ((hasDetCritical(result.checks) || hasJudgeCritical(result)) && result.verdict !== "FAIL") {
+      errors.push(`case ${caseId} verdict must be FAIL: a critical finding failure cannot be rescued (got ${result.verdict})`);
     }
     if (result.allPass !== undefined && result.allPass !== expectedCriteria.allPass) {
-      errors.push(`case ${result.case?.id ?? index} allPass mismatch: expected ${expectedCriteria.allPass}, got ${result.allPass}`);
+      errors.push(`case ${caseId} allPass mismatch: expected ${expectedCriteria.allPass}, got ${result.allPass}`);
     }
     if (result.criteriaPassed !== undefined && result.criteriaPassed !== expectedCriteria.criteriaPassed) {
-      errors.push(`case ${result.case?.id ?? index} criteriaPassed mismatch: expected ${expectedCriteria.criteriaPassed}, got ${result.criteriaPassed}`);
+      errors.push(`case ${caseId} criteriaPassed mismatch: expected ${expectedCriteria.criteriaPassed}, got ${result.criteriaPassed}`);
     }
     if (result.criteriaTotal !== undefined && result.criteriaTotal !== expectedCriteria.criteriaTotal) {
-      errors.push(`case ${result.case?.id ?? index} criteriaTotal mismatch: expected ${expectedCriteria.criteriaTotal}, got ${result.criteriaTotal}`);
+      errors.push(`case ${caseId} criteriaTotal mismatch: expected ${expectedCriteria.criteriaTotal}, got ${result.criteriaTotal}`);
     }
-    if (result.costUsd < 0) errors.push(`case ${result.case?.id ?? index} has negative cost`);
-    if (result.latencyMs < 0) errors.push(`case ${result.case?.id ?? index} has negative latency`);
+    if (result.costUsd < 0) errors.push(`case ${caseId} has negative cost`);
+    if (result.latencyMs < 0) errors.push(`case ${caseId} has negative latency`);
   });
 
   const expectedSummary = recomputeSummary(run);

@@ -182,6 +182,14 @@ export function combineScores(
   // catastrophic 0-100 dimension is never misread as a 0-5 Likert value.
   const judgeLikert = judgeScoresAreLikert(DIMS.map((dim) => adv?.scores?.[dim]));
 
+  // The clinical dimensions (CRIT, QUAL) carry the safety-critical signal: a
+  // missed/fabricated finding lives here. Even in judge-primary mode these dims
+  // must never exceed the deterministic floor — a judge CRIT=100 cannot overwrite
+  // a deterministic CRIT=40/FAIL, which would inflate the per-dimension clinical
+  // column reported on the leaderboard. Non-clinical dims (TERM/GUIDE/RAG) keep
+  // the judge-primary behavior for backward compatibility.
+  const clinicalDimSet: ReadonlySet<Dim> = new Set<Dim>(["CRIT", "QUAL"]);
+
   let totalWeight = 0;
   let overall = 0;
 
@@ -190,7 +198,8 @@ export function combineScores(
     const judge = judgeScoreTo100(adv?.scores?.[dim], judgeLikert);
     if (det === null) combined[dim] = null;
     else if (judge === null) combined[dim] = det;
-    else combined[dim] = scoreMode === "judge-primary" ? judge : Math.min(det, judge);
+    else if (scoreMode === "judge-primary" && !clinicalDimSet.has(dim)) combined[dim] = judge;
+    else combined[dim] = Math.min(det, judge);
     totalWeight += weights[dim];
   }
 

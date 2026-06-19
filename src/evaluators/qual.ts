@@ -247,11 +247,56 @@ function bestSentenceForTokens(sentences: string[], tokens: string[]): string | 
   return bestRatio >= 0.5 ? best : null;
 }
 
+// Select the REPORT text whose polarity decides whether `gold` is affirmed or
+// denied. Two rules close the qual-compound-polarity escape:
+//   1. Scope sentence selection to the gold's PRIMARY finding clause tokens. The
+//      full compound gold's embedded pertinent-negative tokens ("acute subdural
+//      hematoma, no midline shift" -> midline/shift) otherwise dilute the
+//      full-gold token ratio below 0.5, so bestSentenceForTokens returns null on
+//      the very sentence that denies the finding ("No subdural hematoma").
+//   2. NEVER fall back to the gold text itself. The old `?? gold.finding` made
+//      polarityConcordant compare the affirmed gold against itself, so a NEGATING
+//      report was scored as a concordant match. When no report sentence localizes
+//      the primary finding we use the whole report so a bare negation is still
+//      seen — erring toward MISS, the safe (conservative) direction for a critical.
+function reportPolarityCandidate(gold: GoldFinding, sentences: string[], reportText: string): string {
+  const primaryTokens = clinicalTokens(primaryFindingClause(gold.finding));
+  const tokens = primaryTokens.length > 0 ? primaryTokens : clinicalTokens(gold.finding);
+  return bestSentenceForTokens(sentences, tokens) ?? reportText;
+}
+
+// The PRIMARY finding clause of a (possibly compound) text: the first
+// clause that still carries clinical content. Clauses are split on punctuation
+// and contrast/conjunction markers so an embedded, unrelated pertinent negative
+// ("acute subdural hematoma, no midline shift") lives in a SEPARATE clause from
+// the principal affirmed finding and cannot flip its polarity.
+// Coordinating "and"/"or" (PT "e"/"ou") are excluded for the same reason as in
+// extract.ts CLAUSE_CONJUNCTION_RX: they coordinate items under one shared
+// negation rather than introducing a separate clause.
+const PRIMARY_CLAUSE_SPLIT_RX = /[,;:.\n]|\b(?:but|with|mas|com|porem|contudo|entretanto)\b/i;
+
+function primaryFindingClause(text: string): string {
+  const clauses = text
+    .split(PRIMARY_CLAUSE_SPLIT_RX)
+    .map((c) => c.trim())
+    .filter((c) => clinicalTokens(c).length >= 1);
+  return clauses[0] ?? text;
+}
+
 function polarityConcordant(gold: GoldFinding, candidateText: string, locale: LocaleKey, extracted?: ExtractedFinding): boolean {
+  // Candidate polarity: prefer the clause-scoped predicate anchored on the gold
+  // finding span (isFindingNegated), and only consider the candidate negated if
+  // its PRIMARY clause carries the cue — a whole-text hasNegationCue would let
+  // an unrelated pertinent negative elsewhere in the candidate sentence
+  // ("...; no midline shift") wrongly mark an affirmed candidate as negated.
   const candidateNegated = extracted?.negated === true
-    || hasNegationCue(candidateText, locale)
+    || hasNegationCue(primaryFindingClause(candidateText), locale)
     || isFindingNegated(candidateText, gold.finding, locale);
-  const goldNegated = gold.negated === true || hasNegationCue(gold.finding, locale);
+  // Gold polarity (negation-matching-2): clause/primary-anchor scoped, NOT
+  // whole-text. An affirmed compound gold that embeds an unrelated pertinent
+  // negative ("acute subdural hematoma, no midline shift") must stay AFFIRMED,
+  // so a report that NEGATES the critical does not falsely match it.
+  const goldNegated = gold.negated === true || hasNegationCue(primaryFindingClause(gold.finding), locale);
   return goldNegated ? candidateNegated : !candidateNegated;
 }
 
@@ -284,9 +329,12 @@ function matchFindings(
     const directMatch = reportText.includes(goldNorm);
     const clinicalExactMatch = comparableGold.length > 0 && reportWideCoverage >= 0.92;
     if (directMatch || clinicalExactMatch) {
+      // Polarity candidate must be REPORT text, never the gold text (see
+      // reportPolarityCandidate): comparing the affirmed gold to itself made a
+      // negating report look concordant (qual-compound-polarity escape).
       const sentence = directMatch
-        ? sentences.find((s) => normalizeLoose(s).includes(goldNorm)) ?? gold.finding
-        : bestSentenceForTokens(sentences, clinicalTokens(gold.finding)) ?? gold.finding;
+        ? sentences.find((s) => normalizeLoose(s).includes(goldNorm)) ?? reportPolarityCandidate(gold, sentences, reportText)
+        : reportPolarityCandidate(gold, sentences, reportText);
       if (!polarityConcordant(gold, sentence, locale)) {
         matches.push({
           goldFinding: gold.finding,

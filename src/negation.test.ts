@@ -19,6 +19,49 @@ describe("clause-scoped negation (isFindingNegated)", () => {
   });
 });
 
+describe("isFindingNegated: bare-negation fallback when gold label is not a substring (negation-matching-1)", () => {
+  // When the multi-token gold label is not a literal substring of the sentence,
+  // isFindingNegated falls back to whole-sentence scoping. The OLD fallback used
+  // isNegated(), whose locale patterns omit bare "no X"/"sem X", so a report that
+  // DENIES a critical was wrongly treated as non-negated (critical credited).
+  it("en-US: bare 'No pneumothorax.' is negated even when the gold label is multi-token", () => {
+    assert.equal(isFindingNegated("No pneumothorax.", "tension pneumothorax", "en-US"), true);
+    assert.equal(isFindingNegated("No subarachnoid hemorrhage", "acute hemorrhage", "en-US"), true);
+  });
+
+  it("pt-BR: bare 'Sem pneumotórax.' is negated even when the gold label is multi-token", () => {
+    assert.equal(isFindingNegated("Sem pneumotórax.", "pneumotorax hipertensivo", "pt-BR"), true);
+    assert.equal(isFindingNegated("Sem hemorragia subaracnoidea", "hemorragia aguda", "pt-BR"), true);
+  });
+});
+
+describe("isFindingNegated: a leading negation does not bleed across conjunctions (crit-extract-2)", () => {
+  // A leading negation must scope only to its own clause: an affirmed compound
+  // critical after a contrast/conjunction marker stays AFFIRMED. The OLD clause
+  // window used only ',' ';' ':' so "No effusion but acute hemorrhage present"
+  // wrongly read the hemorrhage as negated.
+  it("en-US: 'No effusion but acute hemorrhage present' leaves the hemorrhage affirmed", () => {
+    assert.equal(isFindingNegated("No effusion but acute hemorrhage present", "acute hemorrhage", "en-US"), false);
+  });
+  it("en-US: 'with' (accompaniment) stops the negation scope", () => {
+    assert.equal(isFindingNegated("No effusion with acute hemorrhage", "acute hemorrhage", "en-US"), false);
+  });
+  it("pt-BR: 'mas com' conjunction stops the negation scope", () => {
+    assert.equal(isFindingNegated("Sem derrame mas com hematoma agudo", "hematoma", "pt-BR"), false);
+  });
+  it("does not over-relax: a genuine in-clause negation is still detected", () => {
+    assert.equal(isFindingNegated("No pneumothorax", "pneumothorax", "en-US"), true);
+    assert.equal(isFindingNegated("Sem desvio da linha media", "desvio da linha media", "pt-BR"), true);
+  });
+  it("coordinating 'or'/'and' do NOT close the scope (coordinated pertinent negatives stay negated)", () => {
+    // "no hemorrhage or mass effect" denies BOTH; treating 'or' as a boundary
+    // would fabricate a 'mass effect' critical. Same for 'and'.
+    assert.equal(isFindingNegated("No hemorrhage or mass effect", "mass effect", "en-US"), true);
+    assert.equal(isFindingNegated("Sem hemorragia ou efeito de massa", "efeito de massa", "pt-BR"), true);
+    assert.equal(isFindingNegated("No hemorrhage and mass effect", "mass effect", "en-US"), true);
+  });
+});
+
 describe("hasNegationCue", () => {
   it("detects pt-BR and en-US negation openers", () => {
     assert.equal(hasNegationCue("Sem desvio da linha media", "pt-BR"), true);

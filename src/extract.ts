@@ -434,15 +434,70 @@ export function hasNegationCue(text: string, locale: LocaleKey): boolean {
   return prefixRx.test(normalized) || suffixRx.test(normalized) || isNegated(text, locale);
 }
 
+// Contrast / accompaniment markers that close a negation's scope. A leading
+// negation ("No effusion ...") must NOT bleed past one of these into an
+// affirmed compound critical ("... but acute hemorrhage present"). These join
+// the punctuation boundaries (',' ';' ':') used to scope the clause window.
+//
+// IMPORTANT: the coordinating conjunctions "and"/"or" (PT "e"/"ou") are
+// deliberately EXCLUDED. In radiology they overwhelmingly coordinate items
+// under a SINGLE shared negation ("no hemorrhage or mass effect", "sem
+// hemorragia ou efeito de massa") — both items are denied. Treating them as
+// scope-closers would un-negate the second item and fabricate a critical
+// detection (a false alarm in the UNSAFE direction). Only true contrast
+// ("but"/"mas"/"porem"/"contudo"/"entretanto") and accompaniment ("with"/"com")
+// introduce a genuinely separate clause that a leading negation must not scope.
+const CLAUSE_CONJUNCTION_RX = /\b(?:but|with|mas|com|porem|contudo|entretanto)\b/g;
+
+/**
+ * Boundary index of the LAST conjunction-marker strictly before `idx`, or -1.
+ * Returned so that the shared `Math.max(...) + 1` lands just AFTER the
+ * conjunction word (matching the convention of the punctuation boundaries,
+ * which return the separator index). Used to bound the clause window on its
+ * left so a negation in an earlier clause does not scope across the conjunction
+ * onto the matched finding.
+ */
+function lastConjunctionBoundaryBefore(text: string, idx: number): number {
+  let pos = -1;
+  CLAUSE_CONJUNCTION_RX.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = CLAUSE_CONJUNCTION_RX.exec(text)) !== null) {
+    if (m.index >= idx) break;
+    // -1 so the shared `+ 1` in clauseStart points right after the conjunction word.
+    pos = m.index + m[0].length - 1;
+    if (CLAUSE_CONJUNCTION_RX.lastIndex === m.index) CLAUSE_CONJUNCTION_RX.lastIndex++;
+  }
+  return pos;
+}
+
+/** Index of the FIRST conjunction-marker boundary at/after `from`, or -1. */
+function firstConjunctionBoundaryFrom(text: string, from: number): number {
+  CLAUSE_CONJUNCTION_RX.lastIndex = Math.max(0, from);
+  const m = CLAUSE_CONJUNCTION_RX.exec(text);
+  return m ? m.index : -1;
+}
+
 export function isFindingNegated(sentence: string, matchText: string, locale: LocaleKey): boolean {
   const normSentence = normalizeLoose(sentence);
   const normMatch = normalizeLoose(matchText);
   const idx = normSentence.indexOf(normMatch);
-  if (idx < 0) return isNegated(sentence, locale);
+  // When the (often multi-token) match is not a literal substring, scope on the
+  // whole sentence using the SAME clause-level cues (NEGATION_PREFIX/SUFFIX, via
+  // hasNegationCue) rather than the weaker isNegated, whose locale patterns omit
+  // bare "no X" / "sem X". This closes negation-matching-1: a report DENYING a
+  // critical ("No pneumothorax." / "Sem pneumotorax.") must register as negated
+  // so the critical is NOT credited as mentioned.
+  if (idx < 0) return hasNegationCue(sentence, locale);
+  // Clause window: punctuation boundaries AND contrast/conjunction markers. The
+  // conjunction boundaries (crit-extract-2) stop a leading negation from
+  // bleeding across "but"/"and"/"with"/etc. onto an affirmed compound critical
+  // ("No effusion but acute hemorrhage present").
+  const conjBefore = lastConjunctionBoundaryBefore(normSentence, idx);
   const clauseStart = Math.max(
     normSentence.lastIndexOf(",", idx),
     normSentence.lastIndexOf(";", idx),
     normSentence.lastIndexOf(":", idx),
+    conjBefore,
   ) + 1;
   const matchEnd = idx + normMatch.length;
   let clauseEnd = normSentence.length;
@@ -450,6 +505,8 @@ export function isFindingNegated(sentence: string, matchText: string, locale: Lo
     const next = normSentence.indexOf(sep, matchEnd);
     if (next >= 0 && next < clauseEnd) clauseEnd = next;
   }
+  const conjAfter = firstConjunctionBoundaryFrom(normSentence, matchEnd);
+  if (conjAfter >= 0 && conjAfter < clauseEnd) clauseEnd = conjAfter;
   const prefix = normSentence.slice(clauseStart, idx);
   const suffix = normSentence.slice(matchEnd, clauseEnd);
   const prefixRx = locale === "pt-BR" ? NEGATION_PREFIX_PT : NEGATION_PREFIX_EN;

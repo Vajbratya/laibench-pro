@@ -77,11 +77,17 @@ export const DEFAULT_SCORING_FILES = [
   "src/sanitize.ts",
   "src/extract.ts",
   "src/classify.ts",
+  "src/clinical-match.ts",
   "src/evaluators/crit.ts",
   "src/evaluators/qual.ts",
   "src/evaluators/guide.ts",
   "src/evaluators/rag.ts",
   "src/evaluators/structural.ts",
+  "src/extractors/critical-extractor.ts",
+  "src/locales/index.ts",
+  "src/locales/types.ts",
+  "src/locales/en-US.ts",
+  "src/locales/pt-BR.ts",
 ];
 
 export function runHash(args: { suiteHash: string; manifest: Omit<RunManifest, "validation" | "createdAt">; scoringHash: string }): string {
