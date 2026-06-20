@@ -790,14 +790,16 @@
           <span class="word">laibench <b>pro</b></span>
         </div>
         <div class="content">
-          <h1>The controlled radiology report benchmark.</h1>
-          <p>LAIBench Pro tests a narrow, auditable task: given an exam descriptor and text findings, can a system produce a faithful radiology report without losing clinically important facts?</p>
+          <h1>A governance-oriented benchmark for faithful radiology reports.</h1>
+          <p>LAIBench turns exam context and structured findings into radiology reports — scored where it matters clinically, not on prose. Missed or fabricated critical findings are hard vetoes, never soft deductions.</p>
           <p>The pt-BR controlled suite is gated. The public page shows methodology and aggregate diagnostics only; case JSON, answer keys, frozen predictions and corpus provenance stay outside the public repository.</p>
           <p>Built by <a href="https://laudos.ai" target="_blank" rel="noopener">Laudos.AI</a>. Reproducibility is available to authorized reviewers inside the private audit environment.</p>
           <div class="home-actions">
-            <a class="audit-link primary" href="#methods">Methods</a>
+            <a class="audit-link primary" href="#methods">Scoring</a>
             <a class="audit-link" href="#leaderboard">Leaderboard</a>
+            <a class="audit-link" href="https://github.com/Vajbratya/laibench-pro" target="_blank" rel="noopener">View GitHub</a>
           </div>
+          <p class="trust" style="margin-top:16px;font-size:13px;color:var(--muted);letter-spacing:.02em;">Open scoring rubric · Public cases · Hard veto for unsafe reports</p>
           <div class="homestats" id="homestats"></div>
         </div>
       </section>
@@ -937,7 +939,7 @@
         <div class="ruler" id="ruler"></div>
         <div class="panel-inner">
           <div class="pill">
-            <a id="btn-gh" href="https://github.com/Vajbratya/laibench-pro" target="_blank" rel="noopener" aria-label="Private GitHub" title="Private GitHub">
+            <a id="btn-gh" href="https://github.com/Vajbratya/laibench-pro" target="_blank" rel="noopener" aria-label="View on GitHub" title="View on GitHub">
               <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M9 3v12M3 9h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
             </a>
             <button id="btn-theme" aria-label="Toggle theme" title="Toggle theme">
@@ -947,7 +949,7 @@
           <nav class="menu" id="menu">
             <button class="mitem current" data-page="home"><span class="lead"></span><span class="label">Home</span></button>
             <button class="mitem" data-page="leaderboard"><span class="lead"></span><span class="label">Leaderboard</span></button>
-            <button class="mitem" data-page="methods"><span class="lead"></span><span class="label">Methods</span></button>
+            <button class="mitem" data-page="methods"><span class="lead"></span><span class="label">Scoring</span></button>
             <button class="mitem" data-page="api"><span class="lead"></span><span class="label">API</span></button>
           </nav>
         </div>
@@ -1289,10 +1291,10 @@
     var audit = board.audit || {};
     var runSuffix = audit.lastValidatedRunCases ? ' · '+audit.lastValidatedRunCases+'-case run' : '';
     hs.innerHTML =
-      '<span><b>'+pct(leader.score)+'</b>#1 score · '+esc(leader.system)+runSuffix+'</span>' +
-      '<span><b>'+(board.reliability!=null?pct(board.reliability):'—')+'</b>pass^'+(board.reliabilityRuns||3)+' crit-safe</span>' +
-      '<span><b>'+board.cases+'</b>controlled cases</span>' +
-      '<span><b>'+(audit.criticalSafetyCases || '—')+'</b>critical-safety cases</span>';
+      '<span><b>5</b>weighted clinical dimensions</span>' +
+      '<span><b>'+board.cases+'</b>controlled pt-BR cases</span>' +
+      '<span><b>'+pct(leader.score)+'</b>current reference score · '+esc(leader.system)+'</span>' +
+      '<span><b>0</b>prose / aesthetic axes</span>';
   }
 
   renderSeg(); renderBoard(); renderHome();
