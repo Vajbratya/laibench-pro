@@ -50,6 +50,8 @@ The readiness score is an engineering score, not a clinical validity score.
 
 ## Evaluation Dimensions
 
+All published clinical scores are normalized finite 0-100 values. This applies to per-dimension scores, per-case overall scores, suite means, and judge-adjusted combined scores. Leaderboard publishing rejects out-of-range, `NaN`, or infinite score artifacts rather than ranking them.
+
 | Dimension | Purpose |
 | --- | --- |
 | CRIT | Preserve and correctly surface critical findings |

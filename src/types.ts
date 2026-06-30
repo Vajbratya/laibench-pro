@@ -58,7 +58,9 @@ export type JudgeSpotCheck = {
 
 export type JudgeResult = {
   verdict: Exclude<Verdict, "UNSCORED">;
+  /** Validated raw judge dimension scores; combineScores owns legacy Likert normalization. */
   scores: Partial<Record<Dim, number>>;
+  /** Validated raw judge overall score; calibration/combination normalize legacy Likert values. */
   overall: number | null;
   critical_failures: JudgeFailure[];
   missing: string[];

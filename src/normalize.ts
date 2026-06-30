@@ -27,13 +27,21 @@ export function estimateCost(usage: { inputTokens?: number; outputTokens?: numbe
   return roundCost(input + output);
 }
 
+export function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+export function isScore100(value: unknown): value is number {
+  return isFiniteNumber(value) && value >= 0 && value <= 100;
+}
+
 export function clampScore(value: unknown): number | null {
-  if (typeof value !== "number" || Number.isNaN(value)) return null;
+  if (!isFiniteNumber(value)) return null;
   return Math.max(1, Math.min(5, round1(value)));
 }
 
 export function clampScore100(value: unknown): number | null {
-  if (typeof value !== "number" || Number.isNaN(value)) return null;
+  if (!isFiniteNumber(value)) return null;
   return Math.max(0, Math.min(100, round1(value)));
 }
 

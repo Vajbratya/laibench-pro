@@ -3,11 +3,11 @@ import assert from "node:assert/strict";
 import { calibrateJudges, scanContamination } from "./calibrate.js";
 import type { CaseRunResult, Dim, JudgeResult, SuiteRunResult } from "./types.js";
 
-function fakeJudge(overallScale1to5: number): JudgeResult {
+function fakeJudge(overallScore100: number): JudgeResult {
   return {
     verdict: "PASS",
-    scores: { CRIT: overallScale1to5, QUAL: overallScale1to5, TERM: overallScale1to5, GUIDE: overallScale1to5, RAG: overallScale1to5 },
-    overall: overallScale1to5,
+    scores: { CRIT: overallScore100, QUAL: overallScore100, TERM: overallScore100, GUIDE: overallScore100, RAG: overallScore100 },
+    overall: overallScore100,
     critical_failures: [],
     missing: [],
     hallucinated: [],
@@ -76,7 +76,7 @@ function fakeRun(name: string, judgeModel: string, perCase: Array<{ id: string; 
 
 describe("calibrateJudges", () => {
   it("flags 'calibrated' when det↔judge correlation is strong and α high", () => {
-    const cases = Array.from({ length: 20 }, (_, i) => ({ id: `c${i}`, det: 60 + i * 2, judge: 3 + i * 0.1 }));
+    const cases = Array.from({ length: 20 }, (_, i) => ({ id: `c${i}`, det: 60 + i * 2, judge: 60 + i * 2 }));
     const run1 = fakeRun("r1", "claude-opus", cases);
     const run2 = fakeRun("r2", "claude-opus", cases);
     const r = calibrateJudges([run1, run2]);
@@ -97,14 +97,14 @@ describe("calibrateJudges", () => {
   });
 
   it("flags 'uncalibrated' when det↔judge correlation is near zero", () => {
-    const cases = Array.from({ length: 20 }, (_, i) => ({ id: `c${i}`, det: 60 + i * 2, judge: 3 - i * 0.1 + (i % 2) }));
+    const cases = Array.from({ length: 20 }, (_, i) => ({ id: `c${i}`, det: 60 + i * 2, judge: 90 - i * 2 + (i % 2) }));
     const run = fakeRun("r1", "j", cases);
     const r = calibrateJudges([run]);
     assert.ok(r.verdict !== "calibrated");
   });
 
   it("computes cross-judge metrics when 2+ judges share the suite", () => {
-    const cases = Array.from({ length: 15 }, (_, i) => ({ id: `c${i}`, det: 60 + i * 2, judge: 3 + i * 0.1 }));
+    const cases = Array.from({ length: 15 }, (_, i) => ({ id: `c${i}`, det: 60 + i * 2, judge: 60 + i * 2 }));
     const a = fakeRun("a", "judge-A", cases);
     const b = fakeRun("b", "judge-B", cases.map((c) => ({ ...c, judge: c.judge - 0.05 })));
     const r = calibrateJudges([a, b]);

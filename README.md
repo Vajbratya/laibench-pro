@@ -51,6 +51,8 @@ The framework makes failure modes visible: clinically relevant omissions, halluc
 
 ## Scoring
 
+Published clinical scores are finite **0-100** values at every layer: dimension scores, case overall, suite average, and leaderboard artifacts. Public leaderboard generation rejects manually edited or malformed run JSON with `NaN`, infinite, negative, or >100 scores. LLM judge JSON is validated on the 0-100 contract; legacy all-dimension 1-5 Likert output remains accepted through result-level rescaling for backward compatibility.
+
 | Dimension | Weight | Purpose |
 | --- | ---: | --- |
 | CRIT | 30% | Critical finding preservation and unsafe-negation checks |

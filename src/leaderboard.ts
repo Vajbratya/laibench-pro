@@ -1,6 +1,6 @@
 import { basename } from "node:path";
 import { readJsonFile, writeJsonFile, writeTextFile } from "./io.js";
-import { round1 } from "./normalize.js";
+import { isScore100, round1 } from "./normalize.js";
 import { combineScores, DIMS, WEIGHTS } from "./scoring.js";
 import { buildComparableKey } from "./manifests.js";
 import type { CaseDifficulty, CompareRow, DifficultyBreakdown, Dim, DimSummary, EntityType, Leaderboard, LeaderboardEntry, LeaderboardGroup, PublicSubmissionValidation, SubmissionValidation, SuiteRunResult, SuiteSummary, SystemType, Verdict } from "./types.js";
@@ -79,12 +79,20 @@ function closeEnough(actual: number, expected: number, tolerance = 0.11): boolea
 }
 
 function recomputeCombinedOverall(combined: Partial<Record<Dim, number | null>>): number {
-  const scoredDims = DIMS.filter((dim) => typeof combined[dim] === "number");
+  const scoredDims = DIMS.filter((dim) => isScore100(combined[dim]));
   const totalWeight = scoredDims.reduce((sum, dim) => sum + WEIGHTS[dim], 0);
   if (totalWeight <= 0) return 0;
   let overall = 0;
   for (const dim of scoredDims) overall += (combined[dim] as number) * (WEIGHTS[dim] / totalWeight);
   return round1(overall);
+}
+
+function validateScore100(errors: string[], label: string, value: unknown): void {
+  if (!isScore100(value)) errors.push(`${label} must be a finite 0-100 score, got ${String(value)}`);
+}
+
+function validateOptionalScore100(errors: string[], label: string, value: unknown): void {
+  if (value !== null && value !== undefined) validateScore100(errors, label, value);
 }
 
 function hasDimSummaries(value: unknown): value is Record<Dim, DimSummary> {
@@ -237,6 +245,16 @@ export function assertSuiteRunIntegrity(run: SuiteRunResult, label = "suite run"
 
   if ((options.requireResults ?? true) && run.results.length === 0) errors.push("run has no case results");
 
+  validateScore100(errors, "summary.averageOverall", run.summary.averageOverall);
+  validateScore100(errors, "summary.accuracyRate", run.summary.accuracyRate);
+  validateScore100(errors, "summary.passRate", run.summary.passRate);
+  validateScore100(errors, "summary.strictPassRate", run.summary.strictPassRate);
+  validateOptionalScore100(errors, "summary.allPassRate", run.summary.allPassRate);
+  validateOptionalScore100(errors, "summary.criterionPassRate", run.summary.criterionPassRate);
+  for (const dim of DIMS) {
+    validateOptionalScore100(errors, `summary.averagePerDim.${dim}`, run.summary.averagePerDim[dim]);
+  }
+
   const expectedComparableKey = buildComparableKey({
     benchmarkVersion: run.manifest.benchmarkVersion,
     suiteId: run.manifest.suiteId,
@@ -258,6 +276,13 @@ export function assertSuiteRunIntegrity(run: SuiteRunResult, label = "suite run"
 
   run.results.forEach((result, index) => {
     const caseId = result.case?.id ?? index;
+    validateScore100(errors, `case ${caseId} detOverall`, result.detOverall);
+    validateScore100(errors, `case ${caseId} combinedOverall`, result.combinedOverall);
+    for (const dim of DIMS) {
+      validateOptionalScore100(errors, `case ${caseId} detDims.${dim}.score`, result.detDims?.[dim]?.score);
+      validateOptionalScore100(errors, `case ${caseId} combined.${dim}`, result.combined?.[dim]);
+    }
+
     const recomputed = recomputeCaseResult(result, run.manifest.scoreMode);
     const expectedOverall = recomputed.overall;
     const expectedCriteria = criterionStats(result.checks);

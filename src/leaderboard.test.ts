@@ -352,6 +352,28 @@ describe("assertSuiteRunIntegrity", () => {
     assert.throws(() => assertSuiteRunIntegrity(artifact, "tampered"), /summary\.averageOverall mismatch/);
   });
 
+  it("rejects case scores outside the 0-100 contract", () => {
+    const result = singleResult(100, "PASS");
+    result.detDims.CRIT.score = 150;
+    result.combined.CRIT = 150;
+    const artifact = runWithResult(result);
+
+    assert.throws(
+      () => assertSuiteRunIntegrity(artifact, "bad-score"),
+      /case R001 detDims\.CRIT\.score must be a finite 0-100 score/,
+    );
+  });
+
+  it("rejects non-finite summary scores", () => {
+    const artifact = runWithResult(singleResult(80, "PARTIAL"));
+    artifact.summary.averageOverall = Number.NaN;
+
+    assert.throws(
+      () => assertSuiteRunIntegrity(artifact, "nan-summary"),
+      /summary\.averageOverall must be a finite 0-100 score/,
+    );
+  });
+
   it("rejects comparable keys that omit scoring mode", () => {
     const artifact = run("legacy-key-agent", true, 0, 50);
     artifact.results = [{
